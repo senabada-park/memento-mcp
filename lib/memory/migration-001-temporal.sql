@@ -21,12 +21,11 @@ ALTER TABLE agent_memory.fragments
 
 /**
  * 기존 데이터 보정: valid_from을 created_at으로 역보정.
- * DEFAULT NOW()로 생성된 행(= 방금 추가된 기본값)만 created_at으로 교체.
- * 조건: valid_from >= NOW() - INTERVAL '1 second' (마이그레이션 직후 삽입된 행만 해당)
+ * created_at은 항상 올바른 값이므로 조건 없이 전체 행에 적용한다.
+ * ALTER TABLE과 UPDATE 사이의 시간 경과로 인한 누락을 방지.
  */
 UPDATE agent_memory.fragments
-SET valid_from = created_at
-WHERE valid_from >= NOW() - INTERVAL '1 second';
+SET valid_from = created_at;
 
 /**
  * Temporal Active 인덱스: agent_id + valid_from 복합, valid_to IS NULL 부분 인덱스.

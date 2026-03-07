@@ -101,8 +101,8 @@ lib/
 ├── compression.js     응답 압축 (gzip/deflate)
 ├── metrics.js         Prometheus 메트릭 수집 (prom-client)
 ├── logger.js          Winston 로거 (daily rotate)
-├── utils.js           Origin 검증, JSON 바디 파싱, SSE 출력
-└── path-validator.js  경로 검증
+├── rate-limiter.js    IP 기반 sliding window rate limiter
+└── utils.js           Origin 검증, JSON 바디 파싱(2MB 상한), SSE 출력
 
 lib/admin/
 └── ApiKeyStore.js     API 키 CRUD 및 인증 검증 (SHA-256 해시 저장, 원시 키 단 1회 반환)
@@ -654,6 +654,8 @@ importanceWeight + recencyWeight + semanticWeight의 합은 1.0이어야 한다.
 | SESSION_TTL_MINUTES | 60 | 세션 유효 시간 (분) |
 | LOG_DIR | /var/log/mcp | Winston 로그 파일 저장 디렉토리 |
 | ALLOWED_ORIGINS | (없음) | 허용할 Origin 목록. 쉼표로 구분. 미설정 시 전체 허용 |
+| RATE_LIMIT_WINDOW_MS | 60000 | Rate limiting 윈도우 크기 (ms) |
+| RATE_LIMIT_MAX_REQUESTS | 120 | 윈도우 내 IP당 최대 요청 수 |
 
 ### PostgreSQL
 

@@ -172,8 +172,8 @@ Supporting infrastructure modules:
 | `lib/compression.js` | Response compression (gzip / deflate) |
 | `lib/metrics.js` | Prometheus metric collectors (`prom-client`) |
 | `lib/logger.js` | Winston structured logger with daily log rotation |
-| `lib/utils.js` | Origin validation, JSON body parsing, SSE framing |
-| `lib/path-validator.js` | Filesystem path sanitization |
+| `lib/rate-limiter.js` | IP-based sliding window rate limiter |
+| `lib/utils.js` | Origin validation, JSON body parsing (2MB limit), SSE framing |
 
 External configuration: `config/memory.js` exports `MEMORY_CONFIG`, a module-level constant governing composite ranking weights and stale detection thresholds, decoupled from server source to permit adjustment without code modification.
 
@@ -867,6 +867,8 @@ export const MEMORY_CONFIG = {
 | `SESSION_TTL_MINUTES` | `60` | Session expiration interval in minutes |
 | `LOG_DIR` | `/var/log/mcp` | Winston log file directory |
 | `ALLOWED_ORIGINS` | (empty) | Comma-separated allowed Origin values. All origins permitted when empty. |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limiting window size in milliseconds |
+| `RATE_LIMIT_MAX_REQUESTS` | `120` | Maximum requests per IP within the window |
 
 #### PostgreSQL
 

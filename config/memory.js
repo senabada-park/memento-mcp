@@ -9,10 +9,11 @@
 export const MEMORY_CONFIG = {
   /** 복합 랭킹 가중치 (합계 1.0) */
   ranking: {
-    importanceWeight   : 0.6,
-    recencyWeight      : 0.4,
-    /** 파편 수 이 값 이상 시 복합 랭킹 활성화 */
-    activationThreshold: 100
+    importanceWeight    : 0.4,
+    recencyWeight       : 0.3,
+    semanticWeight      : 0.3,
+    activationThreshold : 0,
+    recencyHalfLifeDays : 30,
   },
   /** stale 검증 주기 (일) */
   staleThresholds: {

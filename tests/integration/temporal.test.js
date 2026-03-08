@@ -13,8 +13,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL ||
-    "postgresql://user:***@localhost:5432/memento"
+  connectionString: process.env.DATABASE_URL
 });
 const S = "agent_memory";
 

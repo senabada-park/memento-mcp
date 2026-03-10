@@ -32,19 +32,19 @@
   <img src="https://img.shields.io/badge/auth-OAuth%202.0%20PKCE-f59e0b?style=flat" alt="Auth" />
 </p>
 
-# Memento MCP: A Fragment-Based Persistent Memory Subsystem for Stateless Language Model Agents
+# Memento MCP
 
 **[Installation Guide →](INSTALL.en.md)**
 
 ---
 
-## Abstract
+## Overview
 
-Contemporary large language model deployments operate under a fundamental architectural constraint: the absence of persistent cross-session state. Each invocation constitutes an epistemically isolated event; context established during one session cannot be recovered in subsequent interactions without explicit external persistence mechanisms. This constraint renders agents incapable of accumulating operational knowledge, tracking error resolution histories, or maintaining user-specific behavioral preferences across session boundaries.
+Memento MCP is a fragment-based persistent memory server implementing the Model Context Protocol (MCP). It gives stateless language model agents durable long-term memory that persists across session boundaries.
 
-We present **Memento MCP**, a persistent memory subsystem implementing the Model Context Protocol (MCP) specification. The system decomposes agent knowledge into discrete, typed *fragments* — atomic units of information semantically classified into six epistemic categories: `fact`, `decision`, `error`, `preference`, `procedure`, and `relation`. Fragment retrieval is implemented as a three-tier cascading search over Redis Set intersection (L1), PostgreSQL GIN-indexed array queries (L2), and pgvector HNSW approximate nearest-neighbor search (L3), with composite ranking over importance and recency dimensions. A background evaluation worker invokes the Google Gemini CLI to assess stored fragment utility asynchronously. An eleven-stage consolidation pipeline manages TTL tier transitions, importance decay, deduplication, and contradiction detection — the latter implemented as a three-stage hybrid of pgvector similarity filtering, NLI (Natural Language Inference) classification via a local mDeBERTa ONNX model, and Gemini CLI escalation for ambiguous cases. Session termination triggers automatic reflection that converts session activity into structured fragments. The `remember` operation proactively creates typed edges to semantically related fragments via direct pgvector cosine similarity queries. Row-Level Security at the PostgreSQL layer enforces agent-scoped isolation without application-layer filtering overhead.
+Agent knowledge is decomposed into discrete, typed **fragments** — atomic units of 1–3 sentences classified into six categories: `fact`, `decision`, `error`, `preference`, `procedure`, and `relation`. Retrieval uses a three-tier cascade: Redis Set intersection (L1), PostgreSQL GIN-indexed array queries (L2), and pgvector HNSW cosine similarity (L3), with composite ranking over importance and recency. A background worker evaluates fragment quality via Gemini CLI. A consolidation pipeline handles TTL tier transitions, importance decay, deduplication, and contradiction detection (pgvector similarity filtering → NLI classification via mDeBERTa ONNX → Gemini CLI escalation for ambiguous cases). Session termination triggers automatic reflection that converts session activity into structured fragments.
 
-The server exposes eleven MCP tools, supports protocol versions 2024-11-05 through 2025-11-25, implements both Streamable HTTP and Legacy SSE transports, and provides OAuth 2.0 PKCE authentication. Default listening port is 57332.
+The server exposes 12 MCP tools, supports MCP protocol versions 2024-11-05 through 2025-11-25, implements both Streamable HTTP and Legacy SSE transports, and provides OAuth 2.0 PKCE authentication. Default port: 57332.
 
 ---
 
@@ -54,30 +54,24 @@ The server exposes eleven MCP tools, supports protocol versions 2024-11-05 throu
 2. System Architecture
 3. Persistence Layer: Schema Design and Indexing
 4. Retrieval Architecture: The Three-Tier Cascade
-   - 4.6 Performance Characteristics
 5. Fragment Lifecycle: TTL Model and Scope Semantics
 6. MCP Tool Interface
 7. Asynchronous Quality Evaluation: MemoryEvaluator
-8. Consolidation Pipeline: MemoryConsolidator (11-stage, NLI + Gemini CLI hybrid)
+8. Consolidation Pipeline: MemoryConsolidator
 9. Fault Tolerance and Degradation Behavior
 10. Configuration
 11. Deployment
 12. Endpoint Reference
-13. References
 
 ---
 
 ## 1. Introduction
 
-The statelessness problem in deployed language model systems is well-characterized. Unlike recurrent architectures that maintain hidden state across time steps, transformer-based models operating in a request-response paradigm retain no information beyond the context window of the current invocation. When a session terminates — whether through normal completion, timeout, or network interruption — all accumulated reasoning, intermediate conclusions, and established context are irrecoverably discarded. The subsequent session begins with no prior knowledge of the agent's operational history.
+Language model sessions are stateless: context accumulated during one session is lost when the session closes. Prepending full conversation history to the context window is impractical — it wastes tokens and degrades signal-to-noise ratio as history grows.
 
-Naïve remediation approaches, such as prepending entire conversation histories to each context window, are computationally prohibitive and semantically inefficient: the signal-to-noise ratio of unstructured historical text degrades rapidly as history accumulates, and fixed context window limits impose hard upper bounds on retrievable history length. The central research question, then, is not whether to persist memory externally, but how to structure external persistence such that retrieval is both efficient and semantically precise.
-
-Memento MCP adopts a *fragment-based* representation. Rather than storing monolithic conversation transcripts, the system decomposes agent knowledge into fine-grained, independently retrievable units. Each fragment is a typed, keyword-annotated, vector-embedded record — independently queryable, linked to related fragments via a typed edge relation, and subject to a lifecycle management policy that governs TTL tier assignment, importance score decay, and eventual expiration. This design mirrors, at an abstract level, the distinction Aristotle drew in *De Memoria et Reminiscentia* between *mneme* (passive retention of impressions) and *anamnesis* (active retrieval through associative search) — though we refrain from asserting neurological correspondence.
+Memento MCP addresses this by persisting knowledge as discrete, independently retrievable **fragments** rather than monolithic transcripts. Each fragment is a typed, keyword-annotated, vector-embedded record linked to related fragments via explicit typed edges. A lifecycle management policy governs TTL tier assignment, importance score decay, and eventual expiration.
 
 ![Knowledge Graph](assets/images/knowledge-graph.png)
-
-The following sections describe the system architecture (§2), the PostgreSQL schema and indexing strategy (§3), the three-tier retrieval cascade (§4), the fragment lifecycle model (§5), the complete MCP tool interface (§6), the asynchronous quality evaluation subsystem (§7), the consolidation pipeline (§8), fault tolerance behavior (§9), the configuration surface (§10), and deployment considerations (§11).
 
 ![Token Efficiency](assets/images/token-efficiency.png)
 
@@ -164,14 +158,18 @@ OAuth 2.0 endpoints: `GET /.well-known/oauth-authorization-server`, `GET /.well-
 | `MemoryManager.js` | Business logic facade. Singleton. Coordinates all memory operations. |
 | `FragmentFactory.js` | Fragment construction, schema validation, keyword extraction, PII masking, TTL inference. |
 | `FragmentStore.js` | PostgreSQL CRUD operations; Redis L1 index synchronization on write. |
-| `FragmentSearch.js` | Three-tier retrieval orchestration (structured: L1→L2; semantic: L1→L2‖L3 RRF merge). |
+| `FragmentSearch.js` | Three-tier retrieval orchestration (structured: L1→L2; semantic: L1→L2‖L3 RRF merge). Per-layer latency instrumentation via `SearchMetrics`. |
 | `FragmentIndex.js` | Redis L1 index management (Set operations per keyword). |
-| `MemoryConsolidator.js` | Eleven-stage lifecycle maintenance pipeline (NLI + Gemini CLI hybrid contradiction detection). |
+| `EmbeddingWorker.js` | Redis queue-based async embedding generation worker (EventEmitter). Emits `embedding_ready` on completion. |
+| `GraphLinker.js` | Subscribes to `embedding_ready`; generates typed edges for newly embedded fragments. Retroactive linking during consolidation. Hebbian co-retrieval linking (`buildCoRetrievalLinks`). |
+| `MorphemeIndex.js` | Morpheme-level embedding lookup via `morpheme_dict` table. L3 fallback when semantic results are sparse. |
+| `MemoryConsolidator.js` | Fifteen-stage lifecycle maintenance pipeline (NLI + Gemini CLI hybrid contradiction detection, feedback-adaptive importance calibration). |
 | `MemoryEvaluator.js` | Asynchronous Gemini CLI quality assessment worker. Singleton. |
 | `NLIClassifier.js` | Natural Language Inference classifier (mDeBERTa ONNX, CPU-only). Entailment/contradiction/neutral labeling for contradiction detection Stage 2. |
 | `SessionActivityTracker.js` | Per-session tool call and fragment activity tracking (Redis Hash). TTL 24h. |
 | `AutoReflect.js` | Automatic `reflect` orchestrator triggered on session termination. Gemini CLI summary with minimal fallback. |
-| `decay.js` | Half-life constants per fragment type and pure exponential decay computation function. |
+| `decay.js` | Half-life constants per fragment type, pure exponential decay function, and ACT-R EMA activation approximation (`updateEmaActivation`, `computeEmaRankBoost`). |
+| `SearchMetrics.js` | Per-layer latency collector (L1/L2/L3/total). Redis circular buffer (100 samples). Exposes P50/P90/P99. |
 | `normalize-vectors.js` | One-time migration script to L2-normalize existing embeddings in the database. |
 | `memory-schema.sql` | PostgreSQL DDL for the `agent_memory` schema. |
 | `migration-001-temporal.sql` | Schema migration: adds `valid_from`, `valid_to`, `superseded_by` columns and temporal indexes. |
@@ -180,6 +178,10 @@ OAuth 2.0 endpoints: `GET /.well-known/oauth-authorization-server`, `GET /.well-
 | `migration-004-key-isolation.sql` | Schema migration: adds `key_id` column to `fragments` for per-API-key memory isolation. |
 | `migration-005-gc-columns.sql` | Schema migration: adds auxiliary indexes on `utility_score` and `access_count` to reinforce GC policy queries. |
 | `migration-006-superseded-by-constraint.sql` | Schema migration: extends `fragment_links.relation_type` CHECK to include `superseded_by`. |
+| `migration-007-link-weight.sql` | Schema migration: adds `weight` column to `fragment_links` for link strength tracking. |
+| `migration-008-morpheme-dict.sql` | Schema migration: creates `morpheme_dict` table for morpheme-level embedding lookup. |
+| `migration-009-co-retrieved.sql` | Schema migration: extends `fragment_links.relation_type` CHECK to include `co_retrieved` (Hebbian co-retrieval links). |
+| `migration-010-ema-activation.sql` | Schema migration: adds `ema_activation` and `ema_last_updated` columns to `fragments` for ACT-R EMA tracking. |
 | `migration-007-flexible-embedding-dims.js` | Schema migration script: converts the `embedding` column to `halfvec(N)` for models with >2000 dimensions (pgvector ≥0.7.0 required). Run with `EMBEDDING_DIMENSIONS=<N>`. |
 | `backfill-embeddings.js` | One-time script to regenerate embeddings for all fragments lacking them; use after a provider or dimension change. |
 
@@ -239,12 +241,15 @@ erDiagram
         text superseded_by "Superseding fragment ID"
         timestamptz last_decay_at "Last decay application timestamp"
         text key_id "API key isolation (NULL=master)"
+        float ema_activation "ACT-R EMA activation approximation (DEFAULT 0.0)"
+        timestamptz ema_last_updated "Last EMA update timestamp"
     }
     fragment_links {
         bigserial id PK
         text from_id FK
         text to_id FK
         text relation_type
+        integer weight "Link strength (co_retrieved accumulates +1)"
     }
     tool_feedback {
         bigserial id PK
@@ -290,28 +295,33 @@ The central relation. Each row represents one atomic unit of agent knowledge.
 | `superseded_by` | TEXT | | ID of the fragment that supersedes this one. |
 | `last_decay_at` | TIMESTAMPTZ | | Timestamp of most recent decay application. Enables idempotent decay: Δt is computed from this column rather than `created_at`. NULL triggers fallback to `COALESCE(accessed_at, created_at, NOW())`. |
 | `key_id` | TEXT | FK → api_keys.id, ON DELETE SET NULL | Per-API-key memory isolation. NULL indicates the fragment was stored via the master key (`MEMENTO_ACCESS_KEY`) and is only accessible to master key requests. A non-null value restricts access to the specific API key that stored it. |
+| `ema_activation` | FLOAT | DEFAULT 0.0 | ACT-R baseline activation EMA approximation. Updated by `incrementAccess()` via: `α × (Δt_sec)^{−0.5} + (1−α) × prev`, α=0.3. Used in `_computeRankScore()` to boost frequently-retrieved fragments. |
+| `ema_last_updated` | TIMESTAMPTZ | | Timestamp of last EMA update. NULL triggers fallback to `created_at − 1 day`. |
 
 **Index inventory:** `content_hash` (UNIQUE B-tree); `topic` (B-tree); `type` (B-tree); `keywords` (GIN); `importance DESC` (B-tree); `created_at DESC` (B-tree); `agent_id` (B-tree); `linked_to` (GIN); `(ttl_tier, created_at)` (composite B-tree); `source` (B-tree); `verified_at` (B-tree); `is_anchor WHERE is_anchor = TRUE` (partial B-tree); `valid_from` (B-tree); `(topic, type) WHERE valid_to IS NULL` (partial B-tree); `id WHERE valid_to IS NULL` (partial UNIQUE).
 
-**HNSW vector index:** Constructed conditionally on `embedding IS NOT NULL`. Parameters: `m = 16` (maximum bidirectional connections per layer), `ef_construction = 64` (dynamic candidate list size during graph construction), distance function `vector_cosine_ops`. This configuration follows the parameter recommendations of Malkov and Yashunin (2018) for moderate-scale approximate nearest-neighbor search, providing logarithmic query complexity O(log n) against brute-force O(n·d) at the cost of bounded recall degradation. The choice of m=16 and ef_construction=64 represents a heuristic default balancing index build time against query recall; operators with distinct recall/latency requirements should tune accordingly.
+**HNSW vector index:** Conditional on `embedding IS NOT NULL`. Parameters: `m=16` (neighbor connections per node), `ef_construction=64` (search depth during index build), distance function `vector_cosine_ops`. Adjust `ef_construction` upward to improve recall at the cost of longer build time.
 
 ### 3.2 The `fragment_links` Table
 
-Reifies the typed edge relation between fragments independently of the `linked_to` array on `fragments`. The array provides fast single-hop adjacency lookup; this table provides a normalized, queryable representation amenable to relational operations and graph traversal.
+Typed edge relation between fragments. The `linked_to` array on `fragments` provides fast single-hop adjacency; this table provides a normalized, queryable representation for relational operations and graph traversal.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | BIGSERIAL | PRIMARY KEY |
 | `from_id` | TEXT | REFERENCES fragments(id) ON DELETE CASCADE |
 | `to_id` | TEXT | REFERENCES fragments(id) ON DELETE CASCADE |
-| `relation_type` | TEXT | CHECK: `related` / `caused_by` / `resolved_by` / `part_of` / `contradicts` / `superseded_by` |
+| `relation_type` | TEXT | CHECK: `related` / `caused_by` / `resolved_by` / `part_of` / `contradicts` / `superseded_by` / `co_retrieved` |
+| `weight` | INTEGER | Link strength. `co_retrieved` links increment +1 on each co-recall event; defaults to 1. |
 | `created_at` | TIMESTAMPTZ | DEFAULT NOW() |
 
-UNIQUE constraint on `(from_id, to_id)` prevents duplicate edges. B-tree indexes on both `from_id` and `to_id`.
+UNIQUE constraint on `(from_id, to_id)` prevents duplicate edges — co-retrieval events increment `weight` instead of inserting a new row. B-tree indexes on both `from_id` and `to_id`.
+
+`co_retrieved` links are created asynchronously by `GraphLinker.buildCoRetrievalLinks()` whenever a `recall` call returns ≥2 fragments in the same session. This implements a Hebbian associative learning mechanism: fragment pairs that are frequently co-retrieved accumulate higher `weight` values, strengthening their inferred association.
 
 ### 3.3 The `tool_feedback` Table
 
-Captures instrument-level utility assessments submitted via the `tool_feedback` MCP tool.
+Utility assessments submitted via the `tool_feedback` MCP tool.
 
 | Column | Type | Semantics |
 |--------|------|-----------|
@@ -364,9 +374,9 @@ CREATE POLICY fragment_isolation_policy ON agent_memory.fragments
     );
 ```
 
-Three access grants are codified: (1) fragments owned by the requesting agent; (2) fragments in the `default` namespace, treated as a shared global knowledge pool accessible — and writable — by all authenticated agents; (3) unrestricted access for maintenance sessions identified as `system` or `admin`.
+Access is granted to: (1) fragments owned by the requesting agent; (2) fragments in the `default` namespace, shared across all agents; (3) sessions identified as `system` or `admin` (maintenance access).
 
-The `default` namespace is an intentional design decision for shared cross-agent knowledge (e.g., system-wide conventions, shared environment configuration). In multi-agent deployments, any authenticated agent may write to the default namespace. Operators requiring strict namespace isolation should ensure all `remember` calls carry explicit `agentId` values and audit `default`-namespace fragments periodically. The isolation context is established per-transaction via `SET LOCAL app.current_agent_id = $1` prior to query execution, ensuring RLS operates on a per-request rather than per-connection basis.
+The isolation context is set per-transaction via `SET LOCAL app.current_agent_id = $1` before query execution. In multi-agent deployments requiring strict isolation, pass explicit `agentId` on all `remember` calls and audit the `default`-namespace periodically.
 
 ### 3.7 API Key-Based Memory Isolation
 
@@ -388,9 +398,9 @@ Prompts are pre-defined guidelines that help the AI use the memory system more e
 
 ---
 
-## 5. Resources: A Window into System State
+## 5. Resources
 
-Resources allow the AI to retrieve real-time state information of the memory system and include it in the context.
+MCP resources exposing real-time system state.
 
 | URI | Description | Data Source |
 |-----|-------------|-------------|
@@ -476,13 +486,14 @@ where `k = 60` (MEMORY_CONFIG.rrfSearch.k) is the denominator stabilization cons
 
 When `text` is absent (structured query using keywords/topic/type only), L3 is not invoked. The response is assembled from L1 and L2 results only, preserving the low-latency path.
 
-After RRF fusion, composite ranking is applied when the fragment count exceeds `MEMORY_CONFIG.ranking.activationThreshold` (default: 100):
+After RRF fusion, composite ranking is applied:
 
 ```
-rank(f) = importanceWeight × importance(f) + recencyWeight × recency_score(f)
+effectiveImportance(f) = min(1.0, importance(f) + computeEmaRankBoost(ema_activation(f)) × 0.5)
+rank(f) = importanceWeight × effectiveImportance(f) + recencyWeight × recency_score(f) + semanticWeight × similarity(f)
 ```
 
-where `importanceWeight = 0.6`, `recencyWeight = 0.4` are heuristic defaults empirically calibrated for general-purpose agent workloads. They are not derived from a formal optimization procedure; operators with domain-specific retrieval requirements should adjust via `MEMORY_CONFIG.ranking`. Below the activation threshold, fragments are returned in creation-descending order, avoiding the overhead of composite ranking for small stores.
+`computeEmaRankBoost(ema) = 0.3 × (1 − e^{−ema})` — maximum additional boost of 0.15 for the most frequently retrieved fragments. `importanceWeight = 0.4`, `recencyWeight = 0.3`, `semanticWeight = 0.3` by default. Adjust via `MEMORY_CONFIG.ranking`.
 
 Token budget enforcement follows ranking: fragments are accumulated in rank order and the sequence is truncated when cumulative `estimated_tokens` exceeds `tokenBudget` (default: 1000). Token counts are computed using `js-tiktoken` with the `cl100k_base` encoding via `encodingForModel("gpt-4")`; when the encoder is unavailable at runtime, a `chars / 4` approximation is applied as fallback.
 
@@ -492,7 +503,7 @@ When `includeLinks = true` (default), the result set is augmented with one-hop n
 
 ### 4.6 Performance Characteristics
 
-No empirical benchmarks have been published for this deployment. The estimates below derive from the asymptotic properties of the underlying data structures and from published performance data for the component technologies (Redis 7.x, PostgreSQL 16, pgvector 0.7). Actual latencies in production will vary with hardware, network topology, index parameters, and fragment store cardinality.
+Estimated latencies based on underlying data structure properties. Actual production latencies vary with hardware, network, index parameters, and store cardinality.
 
 | Tier / Operation | Time Complexity | Expected Latency | Dominant Cost |
 |-----------------|-----------------|-----------------|---------------|
@@ -719,9 +730,30 @@ Records a utility assessment for a previously executed tool invocation.
 
 Returns aggregate statistics: total fragment count, TTL tier distribution, type-wise counts, embedding coverage ratio, mean utility scores. No parameters.
 
+Response includes a `searchLatencyMs` key with rolling P50/P90/P99 latencies (ms) per retrieval layer, sampled over the last 100 searches:
+
+```json
+"searchLatencyMs": {
+  "L1":    { "p50": 0,   "p90": 1,   "p99": 7,   "count": 26 },
+  "L2":    { "p50": 4,   "p90": 175, "p99": 595, "count": 26 },
+  "L3":    { "p50": 159, "p90": 595, "p99": 595, "count": 10 },
+  "total": { "p50": 8,   "p90": 177, "p99": 597, "count": 26 }
+}
+```
+
+Response also includes an `evaluation` key — implicit IR quality metrics derived from `tool_feedback` and `task_feedback` signals, requiring no labeled dataset:
+
+| Field | Description |
+|-------|-------------|
+| `rolling_precision_at_5` | Rolling Precision@5 over the last 100 sessions. Approximated by `relevant=true` ratio in `tool_feedback`. |
+| `sufficient_rate` | Ratio of `sufficient=true` feedback events (0–1) |
+| `sample_sessions` | Number of sessions used in the Precision@5 estimate |
+| `task_success_rate` | `task_feedback.overall_success` ratio over a 30-day window |
+| `task_sessions` | Number of task sessions used in the success rate estimate |
+
 ### 6.11 `memory_consolidate`
 
-Triggers the eleven-stage consolidation pipeline synchronously. Returns per-stage processing counts including NLI statistics (`nliResolvedDirectly`, `nliSkippedAsNonContra`). No parameters. See §8.
+Triggers the fifteen-stage consolidation pipeline synchronously. Returns per-stage processing counts including NLI statistics (`nliResolvedDirectly`, `nliSkippedAsNonContra`). No parameters. See §8.
 
 ### 6.12 `graph_explore`
 
@@ -784,6 +816,10 @@ memory_consolidate
         │                         └─ CLI unavailable → queue to Redis pending list
         ├── Stage 7.5: pending contradiction reprocessing (Redis queue, max 10 per cycle)
         ├── Stage 8:  feedback report generation (tool_feedback/task_feedback aggregation)
+        ├── Stage 8.5: feedback-adaptive importance calibration (_calibrateByFeedback)
+        │               Joins tool_feedback sessions with SessionActivityTracker co-recall history.
+        │               sufficient=true → +5%; sufficient=false, relevant=true → −2.5%; relevant=false → −5%.
+        │               Learning rate 0.05, clipped to [0.05, 1.0]. is_anchor=true exempt.
         ├── Stage 9:  Redis index pruning + stale fragment collection
         └── Stage 10: aggregate statistics (per-stage counts → return value)
 ```
@@ -799,6 +835,30 @@ Stage 7b applies the NLI classifier (`NLIClassifier.js`) to each candidate pair.
 Stage 7c escalates NLI-uncertain cases to Gemini CLI for contextual adjudication. This handles numerical contradictions (e.g., "TTL is 3600s" vs. "TTL is 300s") and domain-specific conflicts that NLI models cannot reason about. When Gemini CLI is unavailable, pairs with similarity > 0.92 are queued to Redis (`frag:pending_contradictions`) for later reprocessing in Stage 7.5.
 
 Confirmed contradictions trigger: (1) a `contradicts` edge in `fragment_links`; (2) a `superseded_by` edge from the older to the newer fragment; (3) importance halving of the older fragment (anchors exempt). The timestamp is updated only for successfully processed fragments, ensuring failed Gemini calls do not cause fragments to be skipped in subsequent cycles.
+
+---
+
+## Contradiction Detection Pipeline
+
+A 3-stage hybrid pipeline that suppresses O(N²) LLM comparison costs while maintaining precision.
+
+```
+On new fragment insertion
+        ↓
+pgvector cosine similarity > 0.85 candidate filter
+        ↓
+mDeBERTa NLI (in-process ONNX / external HTTP service)
+  ├── contradiction ≥ 0.8  → resolved immediately (superseded_by link + valid_to update)
+  ├── entailment   ≥ 0.6   → confirmed non-contradiction
+  └── ambiguous            → Gemini CLI escalation
+        ↓
+Preserve knowledge via temporal columns (valid_from/valid_to, superseded_by)
+```
+
+- **Cost-efficient**: 99% of candidates handled by NLI; LLM called only for numeric/domain contradictions
+- **Non-destructive**: Version control via temporal columns instead of fragment deletion
+- **Implementation**: `lib/memory/NLIClassifier.js`, `lib/memory/MemoryConsolidator.js`
+- **Env var**: `NLI_SERVICE_URL` — if unset, ONNX in-process mode is used (~280MB, downloaded on first run)
 
 ---
 

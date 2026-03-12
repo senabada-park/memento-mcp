@@ -156,6 +156,9 @@ cat > "$ENV_FILE" <<EOF
 PORT=${PORT}
 SESSION_TTL_MINUTES=${SESSION_TTL}
 LOG_DIR=${LOG_DIR}
+# NODE_ENV=production
+# LOG_LEVEL=info
+# WORKER_ID=single
 EOF
 
 if [[ -n "$MEMENTO_ACCESS_KEY" ]]; then
@@ -165,6 +168,14 @@ else
 fi
 
 cat >> "$ENV_FILE" <<EOF
+
+# --- CORS ------------------------------------------------------------
+# ALLOWED_ORIGINS=https://example.com,https://app.example.com
+# ADMIN_ALLOWED_ORIGINS=https://admin.example.com
+
+# --- Rate Limiting ---------------------------------------------------
+# RATE_LIMIT_WINDOW_MS=60000
+# RATE_LIMIT_MAX_REQUESTS=120
 
 # --- PostgreSQL ------------------------------------------------------
 POSTGRES_HOST=${PG_HOST}
@@ -192,8 +203,20 @@ fi
 
 cat >> "$ENV_FILE" <<EOF
 REDIS_DB=${REDIS_DB}
+
+# --- Redis Sentinel (HA) --------------------------------------------
+# REDIS_SENTINEL_ENABLED=false
+# REDIS_MASTER_NAME=mymaster
+# REDIS_SENTINELS=host1:26379,host2:26380,host3:26381
+
+# --- Cache -----------------------------------------------------------
 CACHE_ENABLED=true
 CACHE_DB_TTL=300
+# CACHE_SESSION_TTL=3600
+
+# --- Compression -----------------------------------------------------
+# MIN_COMPRESS_SIZE=1024
+# COMPRESSION_LEVEL=6
 EOF
 
 if [[ -n "$EMBEDDING_PROVIDER" ]]; then
@@ -212,7 +235,29 @@ EOF
   fi
   [[ -n "$EMBEDDING_MODEL"      ]] && echo "EMBEDDING_MODEL=${EMBEDDING_MODEL}" >> "$ENV_FILE"
   [[ -n "$EMBEDDING_DIMENSIONS" ]] && echo "EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS}" >> "$ENV_FILE"
+  echo "# EMBEDDING_SUPPORTS_DIMS_PARAM=true" >> "$ENV_FILE"
+else
+  cat >> "$ENV_FILE" <<EOF
+
+# --- Embedding (disabled) --------------------------------------------
+# EMBEDDING_PROVIDER=openai
+# OPENAI_API_KEY=
+# EMBEDDING_MODEL=text-embedding-3-small
+# EMBEDDING_DIMENSIONS=1536
+# EMBEDDING_SUPPORTS_DIMS_PARAM=true
+# EMBEDDING_BASE_URL=
+EOF
 fi
+
+cat >> "$ENV_FILE" <<EOF
+
+# --- NLI (Natural Language Inference) --------------------------------
+# NLI_SERVICE_URL=
+# NLI_TIMEOUT_MS=5000
+
+# --- Consolidation ---------------------------------------------------
+# CONSOLIDATE_INTERVAL_MS=21600000
+EOF
 
 success ".env written."
 chmod 600 "$ENV_FILE"

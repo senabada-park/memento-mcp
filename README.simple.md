@@ -23,6 +23,8 @@
 
 ```bash
 cp .env.example.minimal .env
+# .env 값을 편집한 뒤 셸에 반영
+export $(grep -v '^#' .env | grep '=' | xargs)
 npm install
 psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
 psql "$DATABASE_URL" -f lib/memory/memory-schema.sql
@@ -114,11 +116,6 @@ erDiagram
         real importance
         text agent_id
         vector embedding "L2 정규화"
-        timestamptz valid_from "Temporal 시작"
-        timestamptz valid_to "Temporal 종료"
-        text superseded_by "대체 파편 ID"
-        timestamptz last_decay_at "마지막 감쇠 시각"
-        text key_id "API 키 격리 (NULL=마스터)"
     }
     fragment_links {
         bigserial id PK
@@ -127,6 +124,8 @@ erDiagram
         text relation_type
     }
 ```
+
+전체 스키마는 [README.md](README.md)의 데이터베이스 스키마 섹션을 참조한다.
 
 - **fragments**: 모든 기억의 원자 단위 (300자 이내). 임베딩은 L2 정규화 단위 벡터로 저장
 - **fragment_links**: 파편 간의 인과/해결/구성 관계망

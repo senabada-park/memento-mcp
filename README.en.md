@@ -57,6 +57,8 @@ Shortest bootstrap path:
 
 ```bash
 cp .env.example.minimal .env
+# Edit .env values, then load into current shell
+export $(grep -v '^#' .env | grep '=' | xargs)
 npm install
 psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
 psql "$DATABASE_URL" -f lib/memory/memory-schema.sql

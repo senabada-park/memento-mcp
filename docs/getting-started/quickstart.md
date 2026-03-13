@@ -55,7 +55,17 @@ CUDA 11 환경에서 `onnxruntime-node` 설치 오류가 발생하면 아래 명
 npm install --onnxruntime-node-install-cuda=skip
 ```
 
-## 4. PostgreSQL schema 적용
+## 4. 환경 변수 로드
+
+`.env` 파일의 값을 현재 셸에 반영한다.
+
+```bash
+export $(grep -v '^#' .env | grep '=' | xargs)
+```
+
+PowerShell 환경이라면 [Windows PowerShell Setup](windows-powershell.md)의 환경 변수 문법을 참조한다.
+
+## 5. PostgreSQL schema 적용
 
 먼저 `vector` extension을 확인한다.
 
@@ -71,7 +81,7 @@ psql "$DATABASE_URL" -f lib/memory/memory-schema.sql
 
 기존 설치를 업그레이드하는 경우에는 [INSTALL.md](../../INSTALL.md)의 마이그레이션 순서를 따른다.
 
-## 5. 서버 실행
+## 6. 서버 실행
 
 ```bash
 node server.js
@@ -85,7 +95,7 @@ Streamable HTTP endpoints: POST/GET/DELETE /mcp
 Authentication: ENABLED
 ```
 
-## 6. 헬스 체크
+## 7. 헬스 체크
 
 ```bash
 curl -s http://localhost:57332/health
@@ -99,7 +109,7 @@ curl -s http://localhost:57332/health
 }
 ```
 
-## 7. 첫 remember 호출
+## 8. 첫 remember 호출
 
 ```bash
 curl -s -X POST http://localhost:57332/mcp \
@@ -120,7 +130,7 @@ curl -s -X POST http://localhost:57332/mcp \
   }'
 ```
 
-## 8. 첫 recall 호출
+## 9. 첫 recall 호출
 
 ```bash
 curl -s -X POST http://localhost:57332/mcp \

@@ -118,4 +118,4 @@ $env:DATABASE_URL = "postgresql://postgres:change-me@localhost:5432/memento"
 node server.js
 ```
 
-`bash setup.sh`는 이 경로에서 공식 설치 절차로 간주하지 않는다. 반복 사용 환경이라면 WSL2로 전환하는 것이 낫다.
+반복 사용 환경이라면 WSL2로 전환하는 것이 낫다.

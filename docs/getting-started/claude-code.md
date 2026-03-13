@@ -54,7 +54,7 @@ updated: 2026-03-13
         "hooks": [
           {
             "type": "command",
-            "command": "curl -s -X POST http://localhost:57332/mcp -H 'Authorization: Bearer YOUR_KEY' -H 'Content-Type: application/json' -H 'mcp-session-id: ${MCP_SESSION_ID}' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"context\",\"arguments\":{}}}'"
+            "command": "curl -s -X POST http://localhost:57332/mcp -H 'Authorization: Bearer YOUR_KEY' -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"context\",\"arguments\":{}}}'"
           }
         ]
       }
@@ -62,6 +62,8 @@ updated: 2026-03-13
   }
 }
 ```
+
+`mcp-session-id` 헤더는 생략 가능하다. 서버가 세션 ID를 자동으로 생성하여 응답 헤더에 반환한다. 특정 세션을 지정해야 하는 경우에만 직접 전달한다.
 
 ### Windows PowerShell 요청 예시
 

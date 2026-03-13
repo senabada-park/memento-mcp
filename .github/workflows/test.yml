@@ -45,6 +45,7 @@ jobs:
       POSTGRES_DB:        memento_test
       POSTGRES_USER:      memento
       POSTGRES_PASSWORD:  memento_test
+      DATABASE_URL:       postgresql://memento:memento_test@localhost:35433/memento_test
       REDIS_ENABLED:      "false"
       EMBEDDING_ENABLED:  "false"
       MEMENTO_ACCESS_KEY: ci-test-key
@@ -55,10 +56,13 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
-      - name: Run migrations
+      - name: Initialize schema and run migrations
         run: |
+          DB_URL="postgresql://memento:memento_test@localhost:35433/memento_test"
+          psql "$DB_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          psql "$DB_URL" -f lib/memory/memory-schema.sql
           for f in lib/memory/migration-*.sql; do
-            psql postgresql://memento:memento_test@localhost:35433/memento_test -f "$f"
+            psql "$DB_URL" -f "$f"
           done
       - name: E2E tests
         run: npm run test:e2e

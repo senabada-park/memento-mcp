@@ -194,7 +194,7 @@ describe("GraphLinker", () => {
     mockDb.queryResults.set("WHERE id = $1 AND embedding IS NOT NULL", {
       rows: [{
         id         : "frag-newer",
-        content    : "PostgreSQL 포트: 35432",
+        content    : "PostgreSQL 포트: 5432",
         topic      : "database",
         type       : "fact",
         created_at : "2026-03-07T15:00:00Z"

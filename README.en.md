@@ -201,7 +201,9 @@ OAuth 2.0 endpoints: `GET /.well-known/oauth-authorization-server`, `GET /.well-
 |--------|----------------|
 | `MemoryManager.js` | Business logic facade. Singleton. Coordinates all memory operations. |
 | `FragmentFactory.js` | Fragment construction, schema validation, keyword extraction, PII masking, TTL inference. |
-| `FragmentStore.js` | PostgreSQL CRUD operations; Redis L1 index synchronization on write. |
+| `FragmentStore.js` | Facade: delegates reads to `FragmentReader.js` and writes to `FragmentWriter.js`; maintains Redis L1 index synchronization interface. |
+| `FragmentReader.js` | Read-only PostgreSQL operations (getById, getByIds, searchByKeywords, ownership checks). |
+| `FragmentWriter.js` | Write-path PostgreSQL operations (insert, update, delete) with Redis L1 sync. |
 | `FragmentSearch.js` | Three-tier retrieval orchestration (structured: L1→L2; semantic: L1→L2‖L3 RRF merge). Per-layer latency instrumentation via `SearchMetrics`. |
 | `FragmentIndex.js` | Redis L1 index management (Set operations per keyword). |
 | `EmbeddingWorker.js` | Redis queue-based async embedding generation worker (EventEmitter). Emits `embedding_ready` on completion. |
@@ -232,6 +234,7 @@ OAuth 2.0 endpoints: `GET /.well-known/oauth-authorization-server`, `GET /.well-
 | `migration-008-morpheme-dict.sql` | Schema migration: creates `morpheme_dict` table for morpheme-level embedding lookup. |
 | `migration-009-co-retrieved.sql` | Schema migration: extends `fragment_links.relation_type` CHECK to include `co_retrieved` (Hebbian co-retrieval links). |
 | `migration-010-ema-activation.sql` | Schema migration: adds `ema_activation` and `ema_last_updated` columns to `fragments` for ACT-R EMA tracking. |
+| `migration-011-key-groups.sql` | Schema migration: creates `api_key_groups` and `api_key_group_members` tables for API key group management. |
 | `migration-007-flexible-embedding-dims.js` | Schema migration script: converts the `embedding` column to `halfvec(N)` for models with >2000 dimensions (pgvector ≥0.7.0 required). Run with `EMBEDDING_DIMENSIONS=<N>`. |
 | `backfill-embeddings.js` | One-time script to regenerate embeddings for all fragments lacking them; use after a provider or dimension change. |
 
@@ -240,6 +243,7 @@ OAuth 2.0 endpoints: `GET /.well-known/oauth-authorization-server`, `GET /.well-
 | Module | Responsibility |
 |--------|----------------|
 | `lib/admin/ApiKeyStore.js` | API key CRUD operations and authentication verification. SHA-256 hash-only storage; raw key returned once at creation. |
+| `lib/admin/admin-routes.js` | Admin REST endpoint handlers (stats, activity, keys, groups). Extracted from `server.js` for separation of concerns. |
 
 Supporting infrastructure modules:
 
@@ -256,7 +260,7 @@ Supporting infrastructure modules:
 | `lib/logger.js` | Winston structured logger with daily log rotation |
 | `lib/rate-limiter.js` | IP-based sliding window rate limiter |
 | `lib/utils.js` | Origin validation, JSON body parsing (2MB limit), SSE framing |
-| `lib/http-handlers.js` | HTTP request handlers (per-endpoint processing logic) |
+| `lib/http-handlers.js` | HTTP request handlers for MCP and operational endpoints (health, metrics, OAuth, SSE); excludes Admin routes |
 | `lib/scheduler.js` | Periodic task scheduler (manages all setInterval jobs after server start) |
 | `lib/tools/memory-schemas.js` | Tool schema definitions (`inputSchema` for all 12 memory tools) |
 | `lib/tools/db-tools.js` | MCP DB tool handlers (separated from `lib/tools/db.js`) |
@@ -435,7 +439,26 @@ The isolation context is set per-transaction via `SET LOCAL app.current_agent_id
 
 The `key_id` column provides an additional isolation layer orthogonal to the agent-level RLS policy. Fragments stored via the master key (`MEMENTO_ACCESS_KEY`) carry `key_id = NULL` and are accessible only to master key requests. Fragments stored by a provisioned DB API key carry `key_id = <key UUID>` and are visible only to requests authenticated with that specific key.
 
-This model enables per-key memory partitioning in multi-tenant or multi-agent deployments. API keys are provisioned and managed through the Admin SPA at `/v1/internal/model/nothing`. The SPA shell (HTML and images) is served without authentication to allow the login form to render; all data API endpoints under the same prefix require master key authentication. The raw key (`mmcp_<slug>_<32 hex chars>`) is returned exactly once on creation and is never stored; the database retains only the SHA-256 hash. Key status, daily rate limits, and usage statistics are tracked in the `api_keys` and `api_key_usage` tables created by migration-003.
+This model enables per-key memory partitioning in multi-tenant or multi-agent deployments. API keys are provisioned and managed through the Admin SPA at `/v1/internal/model/nothing`. The SPA shell (HTML and images) is served without authentication to allow the login form to render; all data API endpoints under the same prefix require master key authentication via Authorization Bearer header or `?key=` query parameter. The raw key (`mmcp_<slug>_<32 hex chars>`) is returned exactly once on creation and is never stored; the database retains only the SHA-256 hash. Key status, daily rate limits, and usage statistics are tracked in the `api_keys` and `api_key_usage` tables created by migration-003.
+
+### API Key Groups
+
+Keys in the same group share the same fragment isolation scope. Use this when multiple agents (Claude Code, Codex, Gemini, etc.) need to share one project's memory.
+
+- N:M mapping: one key can belong to multiple groups (`api_key_group_members` table)
+- Isolation resolution: `COALESCE(group_id, api_keys.id)` as effective_key_id at auth time
+- Ungrouped keys: existing behavior preserved (isolated by own key id)
+
+Admin REST endpoints:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `.../groups` | List groups (with key_count) |
+| POST | `.../groups` | Create group (`{ name, description? }`) |
+| DELETE | `.../groups/:id` | Delete group (memberships CASCADE) |
+| GET | `.../groups/:id/members` | List group members |
+| POST | `.../groups/:id/members` | Add key to group (`{ key_id }`) |
+| DELETE | `.../groups/:gid/members/:kid` | Remove key from group |
 
 ---
 
@@ -1026,6 +1049,7 @@ export const MEMORY_CONFIG = {
 | `ALLOWED_ORIGINS` | (empty) | Comma-separated allowed Origin values. All origins permitted when empty. |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limiting window size in milliseconds |
 | `RATE_LIMIT_MAX_REQUESTS` | `120` | Maximum requests per IP within the window |
+| `OAUTH_ALLOWED_REDIRECT_URIS` | (empty) | OAuth redirect_uri allowed prefixes (comma-separated). When unset, only localhost redirect URIs are permitted. |
 
 #### PostgreSQL
 

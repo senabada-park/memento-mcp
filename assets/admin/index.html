@@ -238,7 +238,7 @@
     /* ════════════════════════════════════════════════════
        APP SHELL (dashboard + api-keys share this)
     ════════════════════════════════════════════════════ */
-    #view-dashboard, #view-apikeys {
+    #view-dashboard, #view-apikeys, #view-groups {
       flex-direction: row;
     }
 
@@ -628,6 +628,110 @@
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.14); }
 
+    /* ─── groups ──────────────────────────────────────── */
+    .groups-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .groups-header h2 { font: 700 20px/1 var(--font-head); color: var(--text-1); }
+    .groups-header p  { font-size: 13px; color: var(--text-2); margin-top: 3px; }
+
+    .groups-layout { display: grid; grid-template-columns: 1fr; gap: 20px; }
+
+    .create-group-form {
+      background: var(--glass); border: 1px solid var(--border);
+      border-radius: var(--radius-md); padding: 20px;
+      display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+    }
+    .create-group-form .field { margin: 0; flex: 1; min-width: 160px; }
+    .create-group-form .field label {
+      display: block; font-size: 11px; font-weight: 600; letter-spacing: .8px;
+      color: var(--text-3); margin-bottom: 6px; text-transform: uppercase;
+    }
+    .create-group-form .field input {
+      width: 100%;
+      background: rgba(255,255,255,.04); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 9px 12px;
+      font: 14px/1 var(--font-sans); color: var(--text-1); outline: none;
+      transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+    }
+    .create-group-form .field input::placeholder { color: var(--text-3); }
+    .create-group-form .field input:focus {
+      border-color: var(--border-glow);
+      box-shadow: 0 0 0 3px rgba(91,142,240,.12);
+    }
+
+    .group-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 20px;
+      font: 500 11px/1 var(--font-mono);
+      background: rgba(139,92,246,.12); border: 1px solid rgba(139,92,246,.2);
+      color: var(--purple); margin: 2px; cursor: default;
+    }
+    .group-badge .remove-from-group {
+      cursor: pointer; opacity: .5; font-size: 10px; margin-left: 2px;
+      transition: opacity var(--dur) var(--ease);
+    }
+    .group-badge .remove-from-group:hover { opacity: 1; color: var(--red); }
+
+    .member-panel {
+      background: rgba(8,15,35,.8); border-top: 1px solid var(--border);
+      padding: 16px 20px; animation: fadeIn var(--dur) var(--ease) both;
+    }
+    .member-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .member-panel-title { font: 600 12px/1 var(--font-head); color: var(--text-2); letter-spacing: .5px; text-transform: uppercase; }
+    .member-panel table { width: 100%; }
+    .member-panel thead th { padding: 8px 12px; font-size: 10px; }
+    .member-panel tbody td { padding: 10px 12px; font-size: 12px; }
+
+    .add-member-row {
+      display: flex; align-items: center; gap: 8px; margin-top: 12px;
+    }
+    .add-member-row select {
+      flex: 1;
+      background: rgba(255,255,255,.04); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 7px 10px;
+      font: 13px/1 var(--font-sans); color: var(--text-1); outline: none;
+      cursor: pointer;
+    }
+    .add-member-row select:focus { border-color: var(--border-glow); }
+    .add-member-row select option { background: #0d1830; }
+
+    .group-row { cursor: pointer; }
+    .group-row:hover td { background: rgba(139,92,246,.04) !important; }
+    .group-row.expanded td { background: rgba(139,92,246,.06) !important; }
+
+    .key-groups-cell { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+    .assign-group-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(255,255,255,.05); border: 1px solid var(--border);
+      font-size: 12px; line-height: 1; cursor: pointer; color: var(--text-3);
+      transition: all var(--dur) var(--ease);
+    }
+    .assign-group-btn:hover { background: rgba(139,92,246,.15); border-color: rgba(139,92,246,.3); color: var(--purple); }
+
+    .assign-dropdown {
+      position: relative; display: inline-block;
+    }
+    .assign-dropdown-menu {
+      position: absolute; top: 24px; left: 0; z-index: 200;
+      background: #0d1830; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); min-width: 140px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.6);
+      display: none;
+    }
+    .assign-dropdown-menu.open { display: block; }
+    .assign-dropdown-item {
+      padding: 8px 12px; font-size: 12px; color: var(--text-2); cursor: pointer;
+      transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+    }
+    .assign-dropdown-item:hover { background: rgba(139,92,246,.1); color: var(--text-1); }
+    .assign-dropdown-empty { padding: 8px 12px; font-size: 12px; color: var(--text-3); }
+
     /* ─── responsive quick fix ───────────────────────── */
     @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(2,1fr); } }
     @media (max-width: 900px)  { .dash-row { grid-template-columns: 1fr; } }
@@ -688,6 +792,10 @@
       <div class="nav-item" onclick="goTo('apikeys')">
         <span class="icon">⌗</span> API 키 관리
         <span class="badge key-count-badge">—</span>
+      </div>
+      <div class="nav-item" onclick="goTo('groups')">
+        <span class="icon">⊹</span> 키 그룹
+        <span class="badge group-count-badge">—</span>
       </div>
     </nav>
 
@@ -855,6 +963,10 @@
         <span class="icon">⌗</span> API 키 관리
         <span class="badge key-count-badge">—</span>
       </div>
+      <div class="nav-item" onclick="goTo('groups')">
+        <span class="icon">⊹</span> 키 그룹
+        <span class="badge group-count-badge">—</span>
+      </div>
     </nav>
     <nav class="nav-section">
       <div class="nav-label">시스템</div>
@@ -903,6 +1015,7 @@
               <th>이름 / 키</th>
               <th>권한</th>
               <th>상태</th>
+              <th>그룹</th>
               <th>오늘 사용량</th>
               <th>마지막 사용</th>
               <th>생성일</th>
@@ -910,6 +1023,104 @@
             </tr>
           </thead>
           <tbody id="keys-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════
+     VIEW: KEY GROUPS
+════════════════════════════════════════════════════ -->
+<section id="view-groups" class="view">
+  <!-- sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img src="/v1/internal/model/nothing/images/memento_mcp_logo_transparent.png" alt="logo" />
+      <span class="sidebar-logo-text">Memento MCP</span>
+      <span class="sidebar-logo-badge">v2.0</span>
+    </div>
+    <nav class="nav-section">
+      <div class="nav-label">메뉴</div>
+      <div class="nav-item" onclick="goTo('dashboard')">
+        <span class="icon">◈</span> 대시보드
+      </div>
+      <div class="nav-item" onclick="goTo('apikeys')">
+        <span class="icon">⌗</span> API 키 관리
+        <span class="badge key-count-badge">—</span>
+      </div>
+      <div class="nav-item active" onclick="goTo('groups')">
+        <span class="icon">⊹</span> 키 그룹
+        <span class="badge group-count-badge">—</span>
+      </div>
+    </nav>
+    <nav class="nav-section">
+      <div class="nav-label">시스템</div>
+      <div class="nav-item" style="opacity:.5;cursor:default;"><span class="icon">◎</span> 메모리 검색</div>
+      <div class="nav-item" style="opacity:.5;cursor:default;"><span class="icon">≋</span> 세션 관리</div>
+      <div class="nav-item" style="opacity:.5;cursor:default;"><span class="icon">⊞</span> 임베딩 설정</div>
+      <div class="nav-item" style="opacity:.5;cursor:default;"><span class="icon">◧</span> 감쇠 / RRF 설정</div>
+      <div class="nav-item" style="opacity:.5;cursor:default;"><span class="icon">⊡</span> 로그</div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-pill">
+        <div class="user-avatar">관</div>
+        <div class="user-info">
+          <div class="user-name">관리자</div>
+          <div class="user-role">Administrator</div>
+        </div>
+        <div class="logout-btn" onclick="handleLogout()" title="로그아웃">⏻</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- main -->
+  <div class="main">
+    <header class="topbar">
+      <span class="page-title">키 그룹</span>
+      <div class="topbar-actions">
+        <div class="status-pill"><span class="dot"></span> 서버 정상</div>
+        <div class="icon-btn" title="새로고침" onclick="loadGroups()">↻</div>
+      </div>
+    </header>
+
+    <div class="page-content">
+      <div class="groups-header">
+        <div>
+          <h2>키 그룹</h2>
+          <p>API 키를 그룹으로 묶어 공유 격리 공간 및 접근 범위를 관리합니다.</p>
+        </div>
+      </div>
+
+      <!-- create group form -->
+      <div class="create-group-form" style="margin-bottom:20px;">
+        <div class="field">
+          <label>그룹 이름</label>
+          <input type="text" id="new-group-name" placeholder="예: production, staging" />
+        </div>
+        <div class="field">
+          <label>설명 (선택)</label>
+          <input type="text" id="new-group-desc" placeholder="그룹 용도 설명" />
+        </div>
+        <button class="btn-create" onclick="createGroup()">
+          <span>+</span> 그룹 생성
+        </button>
+      </div>
+
+      <!-- groups table -->
+      <div class="keys-table-wrap" id="groups-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>그룹 이름</th>
+              <th>설명</th>
+              <th>키 수</th>
+              <th>생성일</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="groups-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -1081,7 +1292,7 @@ function renderKeysData(keys) {
   _loadedKeys = keys;
   const tbody = document.getElementById('keys-tbody');
   if (!keys.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-3);padding:32px;">생성된 API 키가 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-3);padding:32px;">생성된 API 키가 없습니다.</td></tr>`;
     return;
   }
   tbody.innerHTML = keys.map(k => {
@@ -1094,9 +1305,17 @@ function renderKeysData(keys) {
     const actionBtn = k.status === 'active'
       ? `<button class="action-btn danger" onclick="openRevokeModal('${k.id}','${k.name}')">비활성화</button>`
       : `<button class="action-btn" onclick="activateKey('${k.id}')" style="color:var(--green);">활성화</button>`;
-    const lastUsed  = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString('ko-KR') : '—';
-    const created   = k.created_at   ? new Date(k.created_at).toLocaleDateString('ko-KR')   : '—';
+    const lastUsed   = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString('ko-KR') : '—';
+    const created    = k.created_at   ? new Date(k.created_at).toLocaleDateString('ko-KR')   : '—';
     const usageToday = (k.usage_today || 0).toLocaleString();
+
+    const groupBadges = (k.groups || []).map(g =>
+      `<span class="group-badge">${g.name}<span class="remove-from-group" onclick="removeMemberFromGroupByKey(event,'${g.id}','${k.id}')">✕</span></span>`
+    ).join('');
+    const assignBtn = `<div class="assign-dropdown" id="assign-dd-${k.id}">
+      <span class="assign-group-btn" onclick="toggleAssignDropdown(event,'${k.id}')">+</span>
+      <div class="assign-dropdown-menu" id="assign-menu-${k.id}"></div>
+    </div>`;
 
     return `<tr>
       <td>
@@ -1105,6 +1324,7 @@ function renderKeysData(keys) {
       </td>
       <td>${perms}</td>
       <td>${badge}</td>
+      <td><div class="key-groups-cell">${groupBadges}${assignBtn}</div></td>
       <td>
         <div style="font:400 11px/1 var(--font-mono);color:var(--text-3);">${usageToday} / ${(k.daily_limit||0).toLocaleString()}</div>
       </td>
@@ -1122,7 +1342,7 @@ function renderKeysData(keys) {
 
 async function renderKeys() {
   const tbody = document.getElementById('keys-tbody');
-  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-3);padding:32px;">불러오는 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-3);padding:32px;">불러오는 중...</td></tr>`;
   try {
     const res  = await fetch(`${API_BASE}/keys`, { headers: authHeaders() });
     if (res.status === 401) { handleLogout(); return; }
@@ -1133,7 +1353,7 @@ async function renderKeys() {
       b.textContent = activeCount;
     });
   } catch {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--red);padding:32px;">API 연결 실패</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--red);padding:32px;">API 연결 실패</td></tr>`;
   }
 }
 
@@ -1158,6 +1378,7 @@ function showView(id) {
 function goTo(page) {
   if (page === 'apikeys')   { renderKeys(); }
   if (page === 'dashboard') { loadDashboard(); loadActivity(); }
+  if (page === 'groups')    { loadGroups(); }
   showView(page);
 }
 
@@ -1448,6 +1669,260 @@ document.querySelectorAll('.modal-bg').forEach(bg => {
     if (e.target === bg) bg.classList.remove('open');
   });
 });
+
+/* close assign dropdowns when clicking elsewhere */
+document.addEventListener('click', e => {
+  if (!e.target.closest('.assign-dropdown')) {
+    document.querySelectorAll('.assign-dropdown-menu.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
+/* ── groups state ─────────────────────────────────── */
+let _loadedGroups   = [];
+let _expandedGroup  = null;
+
+/* ── load groups ──────────────────────────────────── */
+async function loadGroups() {
+  const tbody = document.getElementById('groups-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:32px;">불러오는 중...</td></tr>`;
+  try {
+    const res = await fetch(`${API_BASE}/groups`, { headers: authHeaders() });
+    if (res.status === 401) { handleLogout(); return; }
+    const groups = await res.json();
+    _loadedGroups = groups;
+    renderGroupsData(groups);
+    document.querySelectorAll('.group-count-badge').forEach(b => {
+      b.textContent = groups.length;
+    });
+  } catch {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--red);padding:32px;">API 연결 실패</td></tr>`;
+  }
+}
+
+/* ── render groups table ──────────────────────────── */
+function renderGroupsData(groups) {
+  const tbody = document.getElementById('groups-tbody');
+  if (!groups.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:32px;">생성된 그룹이 없습니다.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = groups.map(g => {
+    const created = g.created_at ? new Date(g.created_at).toLocaleDateString('ko-KR') : '—';
+    const isExpanded = _expandedGroup === g.id;
+    return `<tr class="group-row${isExpanded ? ' expanded' : ''}" onclick="toggleGroupMembers('${g.id}')">
+      <td><span style="font-weight:500;color:var(--text-1);">${g.name}</span></td>
+      <td style="color:var(--text-2);">${g.description || '—'}</td>
+      <td style="font:500 13px/1 var(--font-mono);color:var(--purple);">${g.key_count ?? 0}</td>
+      <td style="font:400 12px/1 var(--font-mono);color:var(--text-3);">${created}</td>
+      <td onclick="event.stopPropagation()">
+        <div class="row-actions">
+          <button class="action-btn danger" onclick="deleteGroup('${g.id}','${g.name}')">삭제</button>
+        </div>
+      </td>
+    </tr>
+    ${isExpanded ? `<tr><td colspan="5" style="padding:0;"><div id="member-panel-${g.id}" class="member-panel"></div></td></tr>` : ''}`;
+  }).join('');
+
+  if (_expandedGroup) {
+    const panel = document.getElementById(`member-panel-${_expandedGroup}`);
+    if (panel) renderMemberPanel(_expandedGroup, panel);
+  }
+}
+
+/* ── toggle group member expand ───────────────────── */
+async function toggleGroupMembers(groupId) {
+  if (_expandedGroup === groupId) {
+    _expandedGroup = null;
+    renderGroupsData(_loadedGroups);
+    return;
+  }
+  _expandedGroup = groupId;
+  renderGroupsData(_loadedGroups);
+  const panel = document.getElementById(`member-panel-${groupId}`);
+  if (panel) await renderMemberPanel(groupId, panel);
+}
+
+/* ── render member panel ──────────────────────────── */
+async function renderMemberPanel(groupId, panel) {
+  panel.innerHTML = `<div style="padding:8px 0;color:var(--text-3);font-size:12px;">불러오는 중...</div>`;
+  try {
+    const res     = await fetch(`${API_BASE}/groups/${groupId}/members`, { headers: authHeaders() });
+    const members = res.ok ? await res.json() : [];
+
+    const memberRows = members.length
+      ? members.map(m => {
+          const joined  = m.joined_at ? new Date(m.joined_at).toLocaleDateString('ko-KR') : '—';
+          const statBdg = m.status === 'active'
+            ? `<span class="status-badge active" style="font-size:10px;padding:2px 7px;"><span style="width:4px;height:4px;border-radius:50%;background:var(--green);display:inline-block;"></span>활성</span>`
+            : `<span class="status-badge inactive" style="font-size:10px;padding:2px 7px;">비활성</span>`;
+          return `<tr>
+            <td style="color:var(--text-1);font-weight:500;">${m.name}</td>
+            <td><span class="key-val">${m.key_prefix}••••••</span></td>
+            <td>${statBdg}</td>
+            <td style="font:400 11px/1 var(--font-mono);color:var(--text-3);">${joined}</td>
+            <td>
+              <button class="action-btn danger" onclick="removeMemberFromGroup('${groupId}','${m.id}')">제거</button>
+            </td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:12px;">멤버가 없습니다.</td></tr>`;
+
+    const availableKeys = _loadedKeys.filter(k => !(members.some(m => m.id === k.id)));
+    const selectOpts    = availableKeys.length
+      ? availableKeys.map(k => `<option value="${k.id}">${k.name}</option>`).join('')
+      : `<option disabled value="">추가 가능한 키 없음</option>`;
+
+    panel.innerHTML = `
+      <div class="member-panel-header">
+        <span class="member-panel-title">멤버 (${members.length})</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="padding:8px 12px;font-size:10px;color:var(--text-3);letter-spacing:.8px;text-transform:uppercase;">이름</th>
+          <th style="padding:8px 12px;font-size:10px;color:var(--text-3);letter-spacing:.8px;text-transform:uppercase;">키 프리픽스</th>
+          <th style="padding:8px 12px;font-size:10px;color:var(--text-3);letter-spacing:.8px;text-transform:uppercase;">상태</th>
+          <th style="padding:8px 12px;font-size:10px;color:var(--text-3);letter-spacing:.8px;text-transform:uppercase;">추가일</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${memberRows}</tbody>
+      </table>
+      <div class="add-member-row">
+        <select id="add-member-select-${groupId}">${selectOpts}</select>
+        <button class="btn-create" style="padding:7px 14px;font-size:12px;" onclick="addMemberToGroup('${groupId}')">
+          <span>+</span> 추가
+        </button>
+      </div>`;
+  } catch {
+    panel.innerHTML = `<div style="padding:8px 0;color:var(--red);font-size:12px;">멤버 로드 실패</div>`;
+  }
+}
+
+/* ── create group ──────────────────────────────────── */
+async function createGroup() {
+  const name = document.getElementById('new-group-name').value.trim();
+  if (!name) { document.getElementById('new-group-name').focus(); return; }
+  const desc = document.getElementById('new-group-desc').value.trim();
+  try {
+    const res = await fetch(`${API_BASE}/groups`, {
+      method:  'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name, description: desc || undefined }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || '그룹 생성 실패');
+      return;
+    }
+  } catch { alert('서버 연결 오류'); return; }
+  document.getElementById('new-group-name').value = '';
+  document.getElementById('new-group-desc').value = '';
+  loadGroups();
+}
+
+/* ── delete group ──────────────────────────────────── */
+async function deleteGroup(id, name) {
+  if (!confirm(`"${name}" 그룹을 삭제할까요? 멤버 키는 삭제되지 않습니다.`)) return;
+  try {
+    await fetch(`${API_BASE}/groups/${id}`, { method: 'DELETE', headers: authHeaders() });
+  } catch { /* reload anyway */ }
+  if (_expandedGroup === id) _expandedGroup = null;
+  loadGroups();
+}
+
+/* ── load group members ────────────────────────────── */
+async function loadGroupMembers(groupId) {
+  const panel = document.getElementById(`member-panel-${groupId}`);
+  if (panel) await renderMemberPanel(groupId, panel);
+}
+
+/* ── add member to group ───────────────────────────── */
+async function addMemberToGroup(groupId) {
+  const sel   = document.getElementById(`add-member-select-${groupId}`);
+  const keyId = sel?.value;
+  if (!keyId) return;
+  try {
+    const res = await fetch(`${API_BASE}/groups/${groupId}/members`, {
+      method:  'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ key_id: keyId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || '멤버 추가 실패');
+      return;
+    }
+  } catch { alert('서버 연결 오류'); return; }
+  loadGroups();
+}
+
+/* ── remove member from group ──────────────────────── */
+async function removeMemberFromGroup(groupId, keyId) {
+  try {
+    await fetch(`${API_BASE}/groups/${groupId}/members/${keyId}`, {
+      method: 'DELETE', headers: authHeaders(),
+    });
+  } catch { /* reload anyway */ }
+  loadGroups();
+}
+
+/* ── remove member via key table badge ─────────────── */
+async function removeMemberFromGroupByKey(event, groupId, keyId) {
+  event.stopPropagation();
+  await removeMemberFromGroup(groupId, keyId);
+  renderKeys();
+}
+
+/* ── assign dropdown in keys table ─────────────────── */
+async function toggleAssignDropdown(event, keyId) {
+  event.stopPropagation();
+  const menu = document.getElementById(`assign-menu-${keyId}`);
+  if (!menu) return;
+
+  const isOpen = menu.classList.contains('open');
+  document.querySelectorAll('.assign-dropdown-menu.open').forEach(m => m.classList.remove('open'));
+  if (isOpen) return;
+
+  menu.innerHTML = `<div class="assign-dropdown-empty">불러오는 중...</div>`;
+  menu.classList.add('open');
+
+  try {
+    const res    = await fetch(`${API_BASE}/groups`, { headers: authHeaders() });
+    const groups = res.ok ? await res.json() : [];
+    const key    = _loadedKeys.find(k => k.id === keyId);
+    const memberOf = new Set((key?.groups || []).map(g => g.id));
+    const available = groups.filter(g => !memberOf.has(g.id));
+
+    if (!available.length) {
+      menu.innerHTML = `<div class="assign-dropdown-empty">모든 그룹에 포함됨</div>`;
+      return;
+    }
+    menu.innerHTML = available.map(g =>
+      `<div class="assign-dropdown-item" onclick="assignKeyToGroup(event,'${g.id}','${keyId}')">${g.name}</div>`
+    ).join('');
+  } catch {
+    menu.innerHTML = `<div class="assign-dropdown-empty">로드 실패</div>`;
+  }
+}
+
+/* ── assign key to group via dropdown ──────────────── */
+async function assignKeyToGroup(event, groupId, keyId) {
+  event.stopPropagation();
+  document.querySelectorAll('.assign-dropdown-menu.open').forEach(m => m.classList.remove('open'));
+  try {
+    const res = await fetch(`${API_BASE}/groups/${groupId}/members`, {
+      method:  'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ key_id: keyId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || '그룹 배정 실패');
+      return;
+    }
+  } catch { alert('서버 연결 오류'); return; }
+  renderKeys();
+}
 </script>
 </body>
 </html>

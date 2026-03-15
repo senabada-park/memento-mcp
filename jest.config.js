@@ -18,8 +18,7 @@ export default {
       displayName: "integration",
       testEnvironment: "node",
       testMatch: [
-        "<rootDir>/tests/integration/**/*.test.js",
-        "<rootDir>/tests/integration/**/test-*.js"
+        "<rootDir>/tests/integration/**/*.jest.test.js"
       ],
       testPathIgnorePatterns: [
         "/node_modules/",

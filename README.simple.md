@@ -301,7 +301,12 @@ psql $DATABASE_URL -f lib/memory/migration-003-api-keys.sql      # API 키 관�
 psql $DATABASE_URL -f lib/memory/migration-004-key-isolation.sql # fragments.key_id 격리 컬럼 추가
 psql $DATABASE_URL -f lib/memory/migration-005-gc-columns.sql    # GC 보조 컬럼 추가
 psql $DATABASE_URL -f lib/memory/migration-006-superseded-by-constraint.sql # superseded_by FK 제약 추가
+psql $DATABASE_URL -f lib/memory/migration-008-morpheme-dict.sql  # 형태소 사전 테이블 추가
+psql $DATABASE_URL -f lib/memory/migration-009-co-retrieved.sql  # co-retrieval 링크 추가
+psql $DATABASE_URL -f lib/memory/migration-010-ema-activation.sql # EMA 활성화 컬럼 추가
 psql $DATABASE_URL -f lib/memory/migration-011-key-groups.sql    # API 키 그룹 관리 테이블 추가
+psql $DATABASE_URL -f lib/memory/migration-012-quality-verified.sql # 품질 검증 컬럼 추가
+psql $DATABASE_URL -f lib/memory/migration-013-search-events.sql # 검색 이벤트 관측성 테이블 추가
 
 > **v1.1.0 이전 업그레이드 필독**: migration-006 미실행 시 `amend`/`memory_consolidate` 등에서 DB 에러 발생.
 

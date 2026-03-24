@@ -276,7 +276,7 @@ echo
 # DB schema
 if ask_yn "Apply PostgreSQL schema?" "y"; then
   echo "  1) Fresh install (memory-schema.sql)"
-  echo "  2) Upgrade existing (migration-001 through 006)"
+  echo "  2) Upgrade existing (migration-001 through 013)"
   SCHEMA_CHOICE=$(ask "Choice" "1")
 
   export DATABASE_URL
@@ -287,7 +287,7 @@ if ask_yn "Apply PostgreSQL schema?" "y"; then
     success "Schema applied."
   else
     info "Running migrations..."
-    for i in 001 002 003 004 005 006 007 008 009 010 011 012; do
+    for i in 001 002 003 004 005 006 007 008 009 010 011 012 013; do
       f="lib/memory/migration-${i}-"*".sql"
       if compgen -G "$f" > /dev/null; then
         psql "$DATABASE_URL" -f $f && success "migration-${i} done." || warn "migration-${i} failed (may already be applied)."

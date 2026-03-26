@@ -1,10 +1,10 @@
 /**
- * Memento MCP Admin Console -- Single-file Application
+ * Memento MCP Admin Console -- Stitch Design Aligned SPA
  *
  * 작성자: 최진호
  * 작성일: 2026-03-26
  *
- * 보안 참고: 모든 동적 콘텐츠는 esc() 함수를 통해 HTML 이스케이프 처리됨.
+ * 보안 참고: 모든 동적 콘텐츠는 textContent를 통해 XSS 방어됨.
  * 이 콘솔은 마스터 키 인증 후에만 접근 가능한 내부 관리 도구임.
  */
 
@@ -91,7 +91,7 @@ function renderView() {
 function renderScaffold(container, viewId) {
   container.textContent = "";
   const wrap = document.createElement("div");
-  wrap.className = "scaffold-view";
+  wrap.className = "space-y-6";
 
   const scaffolds = {
     sessions: {
@@ -109,23 +109,25 @@ function renderScaffold(container, viewId) {
   const cfg = scaffolds[viewId] ?? { title: viewId, note: "후속 구현 예정", sections: [] };
 
   const h = document.createElement("h2");
+  h.className = "text-2xl font-headline font-bold tracking-tight";
   h.textContent = cfg.title;
   wrap.appendChild(h);
 
   const note = document.createElement("p");
-  note.className = "scaffold-note";
+  note.className = "text-sm text-slate-400 bg-surface-container-low p-4 border-l-2 border-secondary";
   note.textContent = cfg.note;
   wrap.appendChild(note);
 
   for (const label of cfg.sections) {
     const sec = document.createElement("div");
-    sec.className = "scaffold-section";
+    sec.className = "bg-surface-container-low p-6 rounded-sm";
     const sh = document.createElement("h3");
+    sh.className = "font-headline text-sm font-bold uppercase tracking-widest text-slate-400 mb-4";
     sh.textContent = label;
     sec.appendChild(sh);
     const ph = document.createElement("div");
-    ph.className = "scaffold-placeholder";
-    ph.textContent = "-- " + label + " 영역 --";
+    ph.className = "text-sm text-slate-600 text-center py-8 border border-dashed border-white/5";
+    ph.textContent = "-- " + label + " --";
     sec.appendChild(ph);
     wrap.appendChild(sec);
   }
@@ -184,7 +186,7 @@ function showModal(title, bodyEl, actions) {
 
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "btn";
-  cancelBtn.textContent = "취소";
+  cancelBtn.textContent = "CANCEL";
   cancelBtn.addEventListener("click", closeModal);
   actionsWrap.appendChild(cancelBtn);
 
@@ -211,9 +213,6 @@ function closeModal() {
   }
 }
 
-/**
- * 안전한 DOM 빌더: 문자열을 받아 텍스트 노드로 변환 (마크업 허용 안 함)
- */
 function buildSafeHtml(text) {
   const span = document.createElement("span");
   span.textContent = text;
@@ -238,32 +237,32 @@ function renderLogin() {
 
   const titleEl = document.createElement("div");
   titleEl.className = "login-title";
-  titleEl.textContent = "Memento MCP Console";
+  titleEl.textContent = "MEMENTO MCP";
   card.appendChild(titleEl);
 
   const sub = document.createElement("div");
   sub.className = "login-sub";
-  sub.textContent = "관리자 인증이 필요합니다";
+  sub.textContent = "Operations Console Authentication Required";
   card.appendChild(sub);
 
   const input = document.createElement("input");
   input.type = "password";
   input.className = "login-input";
   input.id = "login-key";
-  input.placeholder = "Access Key";
+  input.placeholder = "ACCESS_KEY";
   input.autocomplete = "off";
   card.appendChild(input);
 
   const errEl = document.createElement("div");
   errEl.className = "login-error";
   errEl.id = "login-error";
-  errEl.textContent = "인증 실패";
+  errEl.textContent = "AUTHENTICATION FAILED";
   card.appendChild(errEl);
 
   const btn = document.createElement("button");
   btn.className = "login-btn";
   btn.id = "login-btn";
-  btn.textContent = "로그인";
+  btn.textContent = "AUTHENTICATE";
   card.appendChild(btn);
 
   root.appendChild(card);
@@ -301,16 +300,16 @@ function logout() {
 }
 
 /* ================================================================
-   7. Sidebar
+   7. Sidebar (Stitch: #0c1326, Space Grotesk, Material Symbols)
    ================================================================ */
 
 const NAV_ITEMS = [
-  { id: "overview", label: "개요",       icon: "~" },
-  { id: "keys",     label: "API 키",     icon: "#" },
-  { id: "groups",   label: "그룹",       icon: "%" },
-  { id: "memory",   label: "메모리",     icon: ":" },
-  { id: "sessions", label: "세션",       icon: "=", scaffold: true },
-  { id: "logs",     label: "로그",       icon: ">" , scaffold: true }
+  { id: "overview", label: "개요",       icon: "dashboard" },
+  { id: "keys",     label: "API 키",     icon: "vpn_key" },
+  { id: "groups",   label: "그룹",       icon: "group" },
+  { id: "memory",   label: "메모리 운영", icon: "memory" },
+  { id: "sessions", label: "세션",       icon: "settings_input_component", scaffold: true },
+  { id: "logs",     label: "로그",       icon: "terminal", scaffold: true }
 ];
 
 function renderSidebar() {
@@ -321,60 +320,87 @@ function renderSidebar() {
 
   /* Brand */
   const brand = document.createElement("div");
-  brand.className = "sidebar-brand";
+  brand.className = "px-6 mb-8";
+
   const brandTitle = document.createElement("div");
-  brandTitle.className = "sidebar-brand-title";
-  brandTitle.textContent = "Memento MCP";
+  brandTitle.className = "text-xl font-bold tracking-tighter text-cyan-400 font-headline";
+  brandTitle.textContent = "MEMENTO MCP";
   brand.appendChild(brandTitle);
+
   const brandSub = document.createElement("div");
-  brandSub.className = "sidebar-brand-sub";
-  brandSub.textContent = "Admin Console";
+  brandSub.className = "text-[10px] text-slate-500 tracking-[0.2em] font-medium uppercase mt-1 font-label";
+  brandSub.textContent = "OPERATIONS CONSOLE";
   brand.appendChild(brandSub);
+
   el.appendChild(brand);
 
   /* Nav */
-  const nav = document.createElement("div");
-  nav.className = "sidebar-nav";
+  const nav = document.createElement("nav");
+  nav.className = "flex-1 px-3 space-y-1";
+
   NAV_ITEMS.forEach(n => {
-    const item = document.createElement("div");
-    item.className = "sidebar-item" + (n.id === state.currentView ? " active" : "") + (n.scaffold ? " scaffold" : "");
-    item.dataset.view = n.id;
+    const item = document.createElement("a");
+    item.href = "#";
+    const isActive = n.id === state.currentView;
+
+    if (isActive) {
+      item.className = "flex items-center gap-3 px-4 py-2.5 rounded-sm text-cyan-400 bg-cyan-400/10 border-l-2 border-cyan-400 transition-all duration-200";
+    } else {
+      item.className = "flex items-center gap-3 px-4 py-2.5 rounded-sm text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-all duration-200";
+    }
+
+    if (n.scaffold) {
+      item.style.opacity = "0.4";
+    }
 
     const icon = document.createElement("span");
-    icon.className = "icon";
+    icon.className = "material-symbols-outlined text-[20px]";
     icon.textContent = n.icon;
     item.appendChild(icon);
-    item.appendChild(document.createTextNode(n.label));
+
+    const label = document.createElement("span");
+    label.className = "text-sm font-medium";
+    label.textContent = n.label;
+    item.appendChild(label);
 
     if (!n.scaffold) {
-      item.addEventListener("click", () => navigate(n.id));
+      item.addEventListener("click", (e) => { e.preventDefault(); navigate(n.id); });
+    } else {
+      item.addEventListener("click", (e) => e.preventDefault());
     }
     nav.appendChild(item);
   });
   el.appendChild(nav);
 
-  /* Footer */
-  const footer = document.createElement("div");
-  footer.className = "sidebar-footer";
-  const logoutBtn = document.createElement("div");
-  logoutBtn.className = "sidebar-logout";
-  logoutBtn.textContent = "로그아웃";
-  logoutBtn.addEventListener("click", logout);
-  footer.appendChild(logoutBtn);
-  el.appendChild(footer);
+  /* Bottom: Settings + Logout */
+  const bottom = document.createElement("div");
+  bottom.className = "px-3 py-4 border-t border-cyan-500/10 space-y-1 mt-auto";
+
+  const logoutItem = document.createElement("a");
+  logoutItem.href = "#";
+  logoutItem.className = "flex items-center gap-3 px-4 py-2 text-slate-500 hover:text-red-400 transition-colors text-xs font-medium uppercase tracking-wider";
+  const logoutIcon = document.createElement("span");
+  logoutIcon.className = "material-symbols-outlined text-[18px]";
+  logoutIcon.textContent = "logout";
+  logoutItem.appendChild(logoutIcon);
+  logoutItem.appendChild(document.createTextNode("LOGOUT"));
+  logoutItem.addEventListener("click", (e) => { e.preventDefault(); logout(); });
+  bottom.appendChild(logoutItem);
+
+  el.appendChild(bottom);
 }
 
 /* ================================================================
-   8. Command Bar
+   8. Command Bar (Stitch: bg-slate-950/60, PRODUCTION badge, status)
    ================================================================ */
 
 const VIEW_TITLES = {
-  overview: "운영 콘솔",
-  keys:     "API 키 관리",
-  groups:   "그룹 관리",
-  memory:   "메모리 운영",
-  sessions: "세션 관리",
-  logs:     "로그 뷰어"
+  overview: "Operations Overview",
+  keys:     "API Key Management",
+  groups:   "Group Management",
+  memory:   "Memory Operations",
+  sessions: "Session Management",
+  logs:     "System Logs"
 };
 
 function renderCommandBar() {
@@ -383,59 +409,115 @@ function renderCommandBar() {
 
   el.textContent = "";
 
-  const titleEl = document.createElement("div");
-  titleEl.className = "cmd-title";
-  titleEl.textContent = VIEW_TITLES[state.currentView] || "";
-  el.appendChild(titleEl);
+  /* Left: Status badges */
+  const left = document.createElement("div");
+  left.className = "flex items-center gap-4";
 
+  const envBadge = document.createElement("span");
+  envBadge.className = "px-2 py-0.5 bg-cyan-400/10 text-cyan-400 border border-cyan-400/20 text-[10px] font-mono tracking-widest font-bold rounded-sm";
+  envBadge.textContent = "PRODUCTION";
+  left.appendChild(envBadge);
+
+  const healthDot = document.createElement("div");
+  healthDot.className = "flex items-center gap-2";
+  const dot = document.createElement("div");
+  dot.className = "w-1.5 h-1.5 bg-tertiary rounded-full pulsing-glow";
+  dot.style.color = "#00fabf";
+  healthDot.appendChild(dot);
+  const healthText = document.createElement("span");
+  healthText.className = "text-xs font-mono text-slate-400 uppercase tracking-tighter";
+  healthText.textContent = "HEALTH: ONLINE";
+  healthDot.appendChild(healthText);
+  left.appendChild(healthDot);
+
+  const sep = document.createElement("div");
+  sep.className = "h-4 w-px bg-slate-800";
+  left.appendChild(sep);
+
+  const syncText = document.createElement("span");
+  syncText.className = "text-[10px] font-mono text-slate-500 uppercase";
+  syncText.textContent = "SYNCED: " + (state.lastUpdated ? relativeTime(state.lastUpdated) : "--");
+  left.appendChild(syncText);
+
+  el.appendChild(left);
+
+  /* Right: actions */
   const right = document.createElement("div");
-  right.className = "cmd-right";
-
-  const ts = document.createElement("span");
-  ts.className = "cmd-timestamp";
-  ts.textContent = "갱신: " + (state.lastUpdated ? new Date(state.lastUpdated).toLocaleTimeString("ko-KR") : "--");
-  right.appendChild(ts);
+  right.className = "flex items-center gap-4";
 
   const refreshBtn = document.createElement("button");
-  refreshBtn.className = "cmd-btn";
-  refreshBtn.textContent = "새로고침";
+  refreshBtn.className = "text-slate-400 hover:text-cyan-400 transition-all";
+  const refreshIcon = document.createElement("span");
+  refreshIcon.className = "material-symbols-outlined";
+  refreshIcon.textContent = "refresh";
+  refreshBtn.appendChild(refreshIcon);
   refreshBtn.addEventListener("click", () => renderView());
   right.appendChild(refreshBtn);
+
+  const divider = document.createElement("div");
+  divider.className = "h-8 w-px bg-white/10";
+  right.appendChild(divider);
+
+  const userInfo = document.createElement("div");
+  userInfo.className = "flex items-center gap-3";
+  const userText = document.createElement("div");
+  userText.className = "text-right";
+  const userName = document.createElement("div");
+  userName.className = "text-xs font-bold text-slate-200 font-headline";
+  userName.textContent = "ADMIN_ROOT";
+  userText.appendChild(userName);
+  const userLevel = document.createElement("div");
+  userLevel.className = "text-[8px] font-mono text-slate-500";
+  userLevel.textContent = "LVL 4 ACCESS";
+  userText.appendChild(userLevel);
+  userInfo.appendChild(userText);
+
+  const userIcon = document.createElement("span");
+  userIcon.className = "material-symbols-outlined text-slate-400 text-3xl";
+  userIcon.textContent = "account_circle";
+  userInfo.appendChild(userIcon);
+
+  right.appendChild(userInfo);
 
   el.appendChild(right);
 }
 
 /* ================================================================
-   9. Overview Dashboard
+   9. Overview Dashboard (Stitch Screen 1)
    ================================================================ */
 
 function renderOverviewCards(stats) {
   if (!stats) return loadingHtml();
 
-  const queues = stats.queues || {};
+  const queues = stats.queues ?? {};
   const cards  = [
-    { label: "총 파편 수",    value: fmt(stats.fragments),                color: "blue" },
-    { label: "활성 세션",     value: fmt(stats.sessions),                 color: "green" },
-    { label: "오늘 API 호출", value: fmt(stats.apiCallsToday),            color: "purple" },
-    { label: "활성 키",       value: fmt(stats.activeKeys),               color: "cyan" },
-    { label: "임베딩 대기열", value: fmt(queues.embeddingBacklog ?? 0),    color: "yellow" },
-    { label: "품질 미검증",   value: fmt(queues.qualityPending ?? 0),     color: "red" }
+    { label: "전체 파편",    value: fmt(stats.fragments),             color: "text-primary",   border: "bg-primary" },
+    { label: "활성 세션",    value: fmt(stats.sessions),              color: "text-on-surface", border: "bg-cyan-500/50" },
+    { label: "오늘 API 호출", value: fmt(stats.apiCallsToday),         color: "text-secondary",  border: "bg-secondary" },
+    { label: "활성 키",      value: fmt(stats.activeKeys),            color: "text-on-surface", border: "bg-cyan-300" },
+    { label: "임베딩 대기열", value: fmt(queues.embeddingBacklog ?? 0), color: "text-on-surface", border: "bg-slate-700" },
+    { label: "품질 미검증",  value: fmt(queues.qualityPending ?? 0),  color: "text-tertiary",   border: "bg-tertiary" }
   ];
 
   const grid = document.createElement("div");
-  grid.className = "kpi-grid";
+  grid.className = "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8";
+
   cards.forEach(c => {
     const card = document.createElement("div");
-    card.className = "kpi-card";
+    card.className = "bg-surface-container-low p-4 relative overflow-hidden group";
     card.dataset.kpi = c.label;
 
+    const barEl = document.createElement("div");
+    barEl.className = "absolute left-0 top-0 bottom-0 w-1 " + c.border;
+    card.appendChild(barEl);
+
     const label = document.createElement("div");
-    label.className = "kpi-label";
+    label.className = "text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1";
     label.textContent = c.label;
     card.appendChild(label);
 
     const val = document.createElement("div");
-    val.className = "kpi-value " + c.color;
+    val.className = "text-2xl font-bold font-headline " + c.color;
     val.textContent = c.value;
     card.appendChild(val);
 
@@ -446,230 +528,319 @@ function renderOverviewCards(stats) {
 
 function renderHealthPanel(stats) {
   if (!stats) return null;
-  const sys = stats.system || {};
+  const sys = stats.system ?? {};
+
+  const panel = document.createElement("section");
+  panel.className = "bg-surface-container-low p-6 rounded-sm shadow-xl";
+
+  /* Header */
+  const header = document.createElement("div");
+  header.className = "flex justify-between items-center mb-6";
+  const headerLeft = document.createElement("div");
+  headerLeft.className = "flex items-center gap-3";
+  const accent = document.createElement("div");
+  accent.className = "w-1 h-5 bg-tertiary";
+  headerLeft.appendChild(accent);
+  const title = document.createElement("h2");
+  title.className = "font-headline text-lg font-bold tracking-tight";
+  title.textContent = "시스템 건전성";
+  headerLeft.appendChild(title);
+  header.appendChild(headerLeft);
+
+  const badges = document.createElement("div");
+  badges.className = "flex gap-2";
+  const rtBadge = document.createElement("span");
+  rtBadge.className = "px-2 py-1 bg-slate-900 text-[9px] font-mono text-slate-400";
+  rtBadge.textContent = "REAL-TIME";
+  badges.appendChild(rtBadge);
+  const uptimeBadge = document.createElement("span");
+  uptimeBadge.className = "px-2 py-1 bg-slate-900 text-[9px] font-mono text-slate-400";
+  uptimeBadge.textContent = "UPTIME: " + (stats.uptime ?? "--");
+  badges.appendChild(uptimeBadge);
+  header.appendChild(badges);
+  panel.appendChild(header);
+
+  /* Bars */
+  const barGrid = document.createElement("div");
+  barGrid.className = "grid grid-cols-1 md:grid-cols-4 gap-6";
 
   function barColor(pct) {
-    if (pct > 85) return "red";
-    if (pct > 60) return "yellow";
-    return "green";
+    if (pct > 85) return "text-error";
+    if (pct > 60) return "text-secondary";
+    return "text-cyan-400";
   }
 
-  const panel = document.createElement("div");
-  panel.className = "panel";
-
-  const title = document.createElement("div");
-  title.className = "panel-title";
-  title.textContent = "시스템 리소스";
-  panel.appendChild(title);
+  function barBg(pct) {
+    if (pct > 85) return "bg-error";
+    if (pct > 60) return "bg-secondary";
+    return "bg-cyan-400";
+  }
 
   [
-    { label: "CPU",    pct: sys.cpu ?? 0 },
-    { label: "Memory", pct: sys.memory ?? 0 },
-    { label: "Disk",   pct: sys.disk ?? 0 }
+    { label: "CPU Usage",  pct: sys.cpu ?? 0 },
+    { label: "Memory",     pct: sys.memory ?? 0 },
+    { label: "Disk I/O",   pct: sys.disk ?? 0 },
+    { label: "Queue",      pct: 0, custom: true }
   ].forEach(b => {
+    const col = document.createElement("div");
+    col.className = "space-y-2";
+
     const row = document.createElement("div");
-    row.className = "bar-row";
+    row.className = "flex justify-between text-[10px] font-mono text-slate-500 uppercase tracking-widest";
 
     const lbl = document.createElement("span");
-    lbl.className = "bar-label";
     lbl.textContent = b.label;
     row.appendChild(lbl);
 
-    const track = document.createElement("div");
-    track.className = "bar-track";
-    const fill = document.createElement("div");
-    fill.className = "bar-fill " + barColor(b.pct);
-    fill.style.width = b.pct + "%";
-    track.appendChild(fill);
-    row.appendChild(track);
-
     const pctSpan = document.createElement("span");
-    pctSpan.className = "bar-pct";
+    pctSpan.className = barColor(b.pct);
     pctSpan.textContent = b.pct + "%";
     row.appendChild(pctSpan);
+    col.appendChild(row);
 
-    panel.appendChild(row);
+    const track = document.createElement("div");
+    track.className = "h-1 bg-slate-900 w-full rounded-full overflow-hidden";
+    const fill = document.createElement("div");
+    fill.className = "h-full " + barBg(b.pct);
+    fill.style.width = b.pct + "%";
+    track.appendChild(fill);
+    col.appendChild(track);
+
+    barGrid.appendChild(col);
   });
+
+  panel.appendChild(barGrid);
 
   /* Connection status */
   const connDiv = document.createElement("div");
-  connDiv.style.marginTop = "12px";
+  connDiv.className = "flex gap-6 mt-6 pt-4 border-t border-white/5";
 
   [
-    { label: "PostgreSQL", status: stats.db === "connected" ? "ok" : "fail", text: stats.db || "unknown" },
-    { label: "Redis",      status: stats.redis === "connected" ? "ok" : "fail", text: stats.redis || "unknown" }
+    { label: "PostgreSQL", status: stats.db },
+    { label: "Redis",      status: stats.redis }
   ].forEach(c => {
-    const row = document.createElement("div");
-    row.className = "conn-row";
-    const dot = document.createElement("span");
-    dot.className = "conn-dot " + c.status;
-    row.appendChild(dot);
+    const item = document.createElement("div");
+    item.className = "flex items-center gap-2";
+    const cDot = document.createElement("div");
+    const isOk = c.status === "connected";
+    cDot.className = "w-1.5 h-1.5 rounded-full " + (isOk ? "bg-tertiary shadow-[0_0_8px_#00fabf]" : "bg-error shadow-[0_0_8px_#ffb4ab]");
+    item.appendChild(cDot);
     const txt = document.createElement("span");
-    txt.textContent = c.label + ": " + c.text;
-    row.appendChild(txt);
-    connDiv.appendChild(row);
+    txt.className = "text-[10px] font-mono text-slate-400 uppercase";
+    txt.textContent = c.label + ": " + (c.status ?? "unknown");
+    item.appendChild(txt);
+    connDiv.appendChild(item);
   });
+
   panel.appendChild(connDiv);
-
   return panel;
-}
-
-function renderHealthFlags(flags) {
-  if (!flags || !Object.keys(flags).length) return null;
-
-  const panel = document.createElement("div");
-  panel.className = "panel";
-
-  const title = document.createElement("div");
-  title.className = "panel-title";
-  title.textContent = "Health Flags";
-  panel.appendChild(title);
-
-  Object.entries(flags).forEach(([key, val]) => {
-    const row = document.createElement("div");
-    row.className = "flag-row";
-
-    const severity = val === true ? "ok" : "warn";
-    const icon = document.createElement("span");
-    icon.className = "flag-icon " + severity;
-    icon.textContent = severity === "ok" ? "[OK]" : "[!]";
-    row.appendChild(icon);
-
-    const text = document.createElement("span");
-    text.textContent = key + ": " + String(val);
-    row.appendChild(text);
-
-    panel.appendChild(row);
-  });
-
-  return panel;
-}
-
-function renderSearchMetrics(stats) {
-  const sm = stats.searchMetrics;
-  const ob = stats.observability;
-  if (!sm && !ob) return null;
-
-  const frag = document.createDocumentFragment();
-
-  if (sm) {
-    ["l1", "l2", "l3"].forEach(l => {
-      const data = sm[l];
-      if (!data) return;
-
-      const panel = document.createElement("div");
-      panel.className = "panel";
-
-      const title = document.createElement("div");
-      title.className = "panel-title";
-      title.textContent = l.toUpperCase() + " Latency";
-      panel.appendChild(title);
-
-      [
-        { label: "P50", value: fmtMs(data.p50) },
-        { label: "P90", value: fmtMs(data.p90) },
-        { label: "P99", value: fmtMs(data.p99) }
-      ].forEach(m => {
-        const row = document.createElement("div");
-        row.className = "metric-row";
-        const lbl = document.createElement("span");
-        lbl.className = "metric-label";
-        lbl.textContent = m.label;
-        row.appendChild(lbl);
-        const val = document.createElement("span");
-        val.className = "metric-value";
-        val.textContent = m.value;
-        row.appendChild(val);
-        panel.appendChild(row);
-      });
-
-      frag.appendChild(panel);
-    });
-  }
-
-  if (ob) {
-    const panel = document.createElement("div");
-    panel.className = "panel";
-
-    const title = document.createElement("div");
-    title.className = "panel-title";
-    title.textContent = "Observability";
-    panel.appendChild(title);
-
-    [
-      { label: "검색 총수",   value: fmt(ob.total_searches ?? 0) },
-      { label: "L1 미스율",   value: fmtPct(ob.l1_miss_rate) },
-      { label: "RRF 사용률",  value: fmtPct(ob.rrf_usage_rate) }
-    ].forEach(m => {
-      const row = document.createElement("div");
-      row.className = "metric-row";
-      const lbl = document.createElement("span");
-      lbl.className = "metric-label";
-      lbl.textContent = m.label;
-      row.appendChild(lbl);
-      const val = document.createElement("span");
-      val.className = "metric-value";
-      val.textContent = m.value;
-      row.appendChild(val);
-      panel.appendChild(row);
-    });
-
-    frag.appendChild(panel);
-  }
-
-  return frag;
 }
 
 function renderTimeline(activities) {
-  const panel = document.createElement("div");
-  panel.className = "panel";
+  const panel = document.createElement("section");
+  panel.className = "bg-surface-container-low p-6 rounded-sm shadow-xl";
 
-  const title = document.createElement("div");
-  title.className = "panel-title";
-  title.textContent = "최근 활동";
-  panel.appendChild(title);
+  const header = document.createElement("div");
+  header.className = "flex justify-between items-center mb-6";
+  const headerLeft = document.createElement("div");
+  headerLeft.className = "flex items-center gap-3";
+  const acc = document.createElement("div");
+  acc.className = "w-1 h-5 bg-primary";
+  headerLeft.appendChild(acc);
+  const title = document.createElement("h2");
+  title.className = "font-headline text-lg font-bold tracking-tight";
+  title.textContent = "최근 메모리 활동";
+  headerLeft.appendChild(title);
+  header.appendChild(headerLeft);
+  panel.appendChild(header);
 
   if (!activities || !activities.length) {
     const empty = document.createElement("div");
-    empty.style.cssText = "color:var(--text-muted);font-size:12px;";
+    empty.className = "text-sm text-slate-600 py-6 text-center";
     empty.textContent = "활동 없음";
     panel.appendChild(empty);
     return panel;
   }
 
-  const timeline = document.createElement("div");
-  timeline.className = "timeline";
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "overflow-hidden border border-cyan-500/5 rounded-sm";
+
+  const table = document.createElement("table");
+  table.className = "w-full text-left font-mono text-[11px]";
+
+  const thead = document.createElement("thead");
+  thead.className = "bg-slate-950/50 text-slate-500";
+  const hRow = document.createElement("tr");
+  ["Topic", "Type", "Agent", "Timestamp"].forEach(h => {
+    const th = document.createElement("th");
+    th.className = "px-4 py-3 font-medium uppercase tracking-widest";
+    th.textContent = h;
+    hRow.appendChild(th);
+  });
+  thead.appendChild(hRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  tbody.className = "divide-y divide-slate-900";
 
   activities.forEach(a => {
-    const item = document.createElement("div");
-    item.className = "timeline-item";
+    const tr = document.createElement("tr");
+    tr.className = "hover:bg-slate-900/40 transition-colors";
 
+    const td1 = document.createElement("td");
+    td1.className = "px-4 py-4 text-cyan-200";
+    td1.textContent = a.topic ?? "(무제)";
+    tr.appendChild(td1);
+
+    const td2 = document.createElement("td");
+    td2.className = "px-4 py-4";
     const badge = document.createElement("span");
-    badge.className = "timeline-badge badge-" + (a.type || "fact");
-    badge.textContent = a.type || "?";
-    item.appendChild(badge);
+    badge.className = "px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded-sm text-[10px] uppercase";
+    badge.textContent = a.type ?? "?";
+    td2.appendChild(badge);
+    tr.appendChild(td2);
 
-    const body = document.createElement("div");
-    body.className = "timeline-body";
-    const topic = document.createElement("div");
-    topic.className = "timeline-topic";
-    topic.textContent = a.topic || "(무제)";
-    body.appendChild(topic);
-    const preview = document.createElement("div");
-    preview.className = "timeline-preview";
-    preview.textContent = a.preview || "";
-    body.appendChild(preview);
-    item.appendChild(body);
+    const td3 = document.createElement("td");
+    td3.className = "px-4 py-4 text-slate-400";
+    td3.textContent = a.agent_id ?? a.key_name ?? "--";
+    tr.appendChild(td3);
 
-    const time = document.createElement("div");
-    time.className = "timeline-time";
-    time.textContent = a.created_at ? relativeTime(a.created_at) : "";
-    item.appendChild(time);
+    const td4 = document.createElement("td");
+    td4.className = "px-4 py-4 text-right text-slate-500";
+    td4.textContent = a.created_at ? relativeTime(a.created_at) : "";
+    tr.appendChild(td4);
 
-    timeline.appendChild(item);
+    tbody.appendChild(tr);
   });
 
-  panel.appendChild(timeline);
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  panel.appendChild(tableWrap);
+  return panel;
+}
+
+function renderRiskPanel(stats) {
+  const panel = document.createElement("section");
+  panel.className = "bg-surface-container-low p-6 rounded-sm shadow-xl";
+
+  const header = document.createElement("div");
+  header.className = "flex items-center gap-3 mb-6";
+  const acc = document.createElement("div");
+  acc.className = "w-1 h-5 bg-error";
+  header.appendChild(acc);
+  const title = document.createElement("h2");
+  title.className = "font-headline text-lg font-bold tracking-tight";
+  title.textContent = "리스크 및 이상 징후";
+  header.appendChild(title);
+  panel.appendChild(header);
+
+  const queues = stats?.queues ?? {};
+  const risks = [
+    { label: "Embedding Backlog", count: queues.embeddingBacklog ?? 0, icon: "hourglass_top", cls: "bg-secondary/10 border-secondary/20 text-secondary" },
+    { label: "Low Quality Frags", count: queues.qualityPending ?? 0, icon: "low_priority", cls: "bg-slate-800 border-slate-700 text-slate-300" }
+  ];
+
+  const riskWrap = document.createElement("div");
+  riskWrap.className = "flex flex-wrap gap-2";
+  risks.forEach(r => {
+    const chip = document.createElement("div");
+    chip.className = "flex items-center gap-2 px-3 py-2 border rounded-sm " + r.cls;
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined text-sm";
+    icon.textContent = r.icon;
+    chip.appendChild(icon);
+    const txt = document.createElement("span");
+    txt.className = "text-[10px] font-mono font-bold uppercase";
+    txt.textContent = r.label + (r.count > 0 ? " (" + r.count + ")" : "");
+    chip.appendChild(txt);
+    riskWrap.appendChild(chip);
+  });
+  panel.appendChild(riskWrap);
+
+  return panel;
+}
+
+function renderQuickActions() {
+  const panel = document.createElement("section");
+  panel.className = "bg-surface-container-low p-6 rounded-sm shadow-xl";
+
+  const header = document.createElement("div");
+  header.className = "flex items-center gap-3 mb-6";
+  const acc = document.createElement("div");
+  acc.className = "w-1 h-5 bg-cyan-400";
+  header.appendChild(acc);
+  const title = document.createElement("h2");
+  title.className = "font-headline text-lg font-bold tracking-tight";
+  title.textContent = "빠른 작업";
+  header.appendChild(title);
+  panel.appendChild(header);
+
+  const grid = document.createElement("div");
+  grid.className = "grid grid-cols-2 gap-3";
+
+  [
+    { icon: "vpn_key", label: "Create Key", view: "keys" },
+    { icon: "group_add", label: "Create Group", view: "groups" },
+    { icon: "build", label: "Run Maint", view: null },
+    { icon: "history_edu", label: "Open Logs", view: "logs" }
+  ].forEach(a => {
+    const btn = document.createElement("button");
+    btn.className = "flex flex-col items-center justify-center p-4 bg-slate-900/50 border border-cyan-500/10 hover:border-cyan-500/40 hover:bg-slate-800 transition-all group rounded-sm";
+
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined text-cyan-400 mb-2";
+    icon.textContent = a.icon;
+    btn.appendChild(icon);
+
+    const label = document.createElement("span");
+    label.className = "text-[10px] font-bold text-slate-200 tracking-widest uppercase";
+    label.textContent = a.label;
+    btn.appendChild(label);
+
+    if (a.view) {
+      btn.addEventListener("click", () => navigate(a.view));
+    }
+
+    grid.appendChild(btn);
+  });
+
+  panel.appendChild(grid);
+  return panel;
+}
+
+function renderSearchLatency(stats) {
+  const sm = stats?.searchMetrics;
+
+  const panel = document.createElement("div");
+  panel.className = "bg-surface-container-low p-6 rounded-sm shadow-xl border-t border-primary/20";
+
+  const title = document.createElement("div");
+  title.className = "text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-4";
+  title.textContent = "검색 지연 시간";
+  panel.appendChild(title);
+
+  const items = document.createElement("div");
+  items.className = "space-y-4";
+
+  [
+    { label: "L1 CACHE",    key: "l1", color: "text-tertiary" },
+    { label: "L2 VECTOR",   key: "l2", color: "text-cyan-400" },
+    { label: "L3 SEMANTIC", key: "l3", color: "text-secondary" }
+  ].forEach(l => {
+    const row = document.createElement("div");
+    row.className = "flex items-center justify-between";
+    const lbl = document.createElement("span");
+    lbl.className = "text-[11px] font-mono text-slate-300";
+    lbl.textContent = l.label;
+    row.appendChild(lbl);
+    const val = document.createElement("span");
+    val.className = "text-sm font-bold " + l.color;
+    val.textContent = sm?.[l.key]?.p50 != null ? fmtMs(sm[l.key].p50) : "--";
+    row.appendChild(val);
+    items.appendChild(row);
+  });
+
+  panel.appendChild(items);
   return panel;
 }
 
@@ -691,57 +862,84 @@ async function renderOverview(container) {
   const activities = activityRes.ok ? activityRes.data : [];
 
   container.textContent = "";
+
+  /* KPI Row */
   container.appendChild(renderOverviewCards(state.stats));
 
-  const healthGrid = document.createElement("div");
-  healthGrid.className = "health-grid";
+  /* Main Grid */
+  const grid = document.createElement("div");
+  grid.className = "grid grid-cols-12 gap-6";
+
+  /* Left Column */
+  const leftCol = document.createElement("div");
+  leftCol.className = "col-span-12 lg:col-span-8 space-y-6";
+
   const hp = renderHealthPanel(state.stats);
-  if (hp) healthGrid.appendChild(hp);
-  const hf = renderHealthFlags(state.stats?.healthFlags);
-  if (hf) healthGrid.appendChild(hf);
-  container.appendChild(healthGrid);
+  if (hp) leftCol.appendChild(hp);
+  leftCol.appendChild(renderTimeline(activities));
+  grid.appendChild(leftCol);
 
-  const metricsGrid = document.createElement("div");
-  metricsGrid.className = "metrics-grid";
-  const sm = renderSearchMetrics(state.stats || {});
-  if (sm) metricsGrid.appendChild(sm);
-  container.appendChild(metricsGrid);
+  /* Right Column */
+  const rightCol = document.createElement("div");
+  rightCol.className = "col-span-12 lg:col-span-4 space-y-6";
+  rightCol.appendChild(renderRiskPanel(state.stats));
+  rightCol.appendChild(renderQuickActions());
+  grid.appendChild(rightCol);
 
-  container.appendChild(renderTimeline(activities));
+  container.appendChild(grid);
+
+  /* Bottom: Search Latency */
+  const bottomGrid = document.createElement("div");
+  bottomGrid.className = "grid grid-cols-1 md:grid-cols-3 gap-6 mt-6";
+  bottomGrid.appendChild(renderSearchLatency(state.stats));
+  container.appendChild(bottomGrid);
+
+  /* Backdrop accents */
+  if (!document.querySelector(".backdrop-accent-primary")) {
+    const bp = document.createElement("div");
+    bp.className = "backdrop-accent-primary";
+    document.body.appendChild(bp);
+    const bs = document.createElement("div");
+    bs.className = "backdrop-accent-secondary";
+    document.body.appendChild(bs);
+  }
 }
 
 /* ================================================================
-   10. API Keys View
+   10. API Keys View (Stitch Screen 2)
    ================================================================ */
 
 function renderKeyKpiRow(keys) {
   const total    = keys.length;
   const active   = keys.filter(k => k.status === "active").length;
   const inactive = total - active;
-  const todaySum = keys.reduce((s, k) => s + (k.today_calls || 0), 0);
+  const groups   = new Set(keys.flatMap(k => k.groups ?? [])).size;
 
   const cards = [
-    { label: "총 키",       value: total,    color: "blue" },
-    { label: "활성",        value: active,   color: "green" },
-    { label: "비활성",      value: inactive, color: "red" },
-    { label: "오늘 호출",   value: todaySum, color: "purple" }
+    { label: "ACTIVE KEYS",  value: active,   border: "bg-tertiary" },
+    { label: "REVOKED KEYS", value: inactive,  border: "bg-error" },
+    { label: "TOTAL GROUPS", value: groups,    border: "bg-secondary" },
+    { label: "NO GROUP",     value: keys.filter(k => !k.groups?.length).length, border: "bg-primary" }
   ];
 
   const grid = document.createElement("div");
-  grid.className = "kpi-grid";
-  grid.style.marginBottom = "20px";
+  grid.className = "grid grid-cols-4 gap-4 mb-8";
 
   cards.forEach(c => {
     const card = document.createElement("div");
-    card.className = "kpi-card";
+    card.className = "bg-surface-container-low p-4 relative overflow-hidden";
 
-    const label = document.createElement("div");
-    label.className = "kpi-label";
+    const bar = document.createElement("div");
+    bar.className = "absolute left-0 top-0 bottom-0 w-1 " + c.border;
+    card.appendChild(bar);
+
+    const label = document.createElement("p");
+    label.className = "text-[10px] font-bold text-slate-500 tracking-widest uppercase mb-1 font-label";
     label.textContent = c.label;
     card.appendChild(label);
 
-    const val = document.createElement("div");
-    val.className = "kpi-value " + c.color;
+    const val = document.createElement("p");
+    val.className = "text-3xl font-headline font-bold text-on-surface";
     val.textContent = fmt(c.value);
     card.appendChild(val);
 
@@ -753,16 +951,21 @@ function renderKeyKpiRow(keys) {
 
 function renderKeyTable(keys) {
   const wrap = document.createElement("div");
-  wrap.className = "data-table-wrap";
+  wrap.className = "bg-surface-container-low flex-1 flex flex-col min-h-0";
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "overflow-x-auto";
 
   const table = document.createElement("table");
-  table.className = "data-table";
+  table.className = "w-full text-left border-collapse";
   table.id = "keys-table";
 
   const thead = document.createElement("thead");
   const hRow = document.createElement("tr");
-  ["이름", "상태", "접두사", "일일 한도", "오늘 사용", "생성일"].forEach(h => {
+  hRow.className = "bg-white/5 border-b border-white/5";
+  ["Name", "Prefix", "Status", "Groups", "Created", "Usage (24h)"].forEach(h => {
     const th = document.createElement("th");
+    th.className = "px-6 py-4 text-[10px] font-bold text-slate-400 tracking-widest uppercase font-label";
     th.textContent = h;
     hRow.appendChild(th);
   });
@@ -770,108 +973,208 @@ function renderKeyTable(keys) {
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
+  tbody.className = "divide-y divide-white/5";
   keys.forEach(k => {
     const tr = document.createElement("tr");
-    if (k.id === state.selectedKeyId) tr.classList.add("selected");
+    tr.className = "hover:bg-white/5 transition-colors group cursor-pointer" + (k.id === state.selectedKeyId ? " bg-white/[0.02]" : "");
     tr.dataset.keyId = k.id;
 
-    const cells = [
-      k.name || "",
-      null, /* status badge handled separately */
-      k.key_prefix || "",
-      fmt(k.daily_limit ?? 0),
-      fmt(k.today_calls ?? 0),
-      fmtDate(k.created_at)
-    ];
+    /* Name */
+    const td1 = document.createElement("td");
+    td1.className = "px-6 py-4";
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "flex items-center gap-3";
+    const statusDot = document.createElement("div");
+    const isActive = k.status === "active";
+    statusDot.className = "w-2 h-2 rounded-full " + (isActive ? "bg-tertiary shadow-[0_0_8px_rgba(0,250,191,0.5)]" : "bg-slate-600");
+    nameWrap.appendChild(statusDot);
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "text-sm font-medium " + (isActive ? "text-on-surface" : "text-slate-500");
+    nameSpan.textContent = k.name ?? "";
+    nameWrap.appendChild(nameSpan);
+    td1.appendChild(nameWrap);
+    tr.appendChild(td1);
 
-    cells.forEach((val, i) => {
-      const td = document.createElement("td");
-      if (i === 1) {
-        const badge = document.createElement("span");
-        badge.className = "status-badge " + (k.status === "active" ? "status-active" : "status-inactive");
-        badge.textContent = k.status || "";
-        td.appendChild(badge);
-      } else if (i === 2) {
-        td.style.fontFamily = "var(--font-mono)";
-        td.textContent = val;
-      } else {
-        td.textContent = val;
-      }
-      tr.appendChild(td);
+    /* Prefix */
+    const td2 = document.createElement("td");
+    td2.className = "px-6 py-4 font-mono text-xs text-primary";
+    td2.textContent = k.key_prefix ?? "";
+    tr.appendChild(td2);
+
+    /* Status toggle */
+    const td3 = document.createElement("td");
+    td3.className = "px-6 py-4";
+    const toggle = document.createElement("div");
+    toggle.className = "w-8 h-4 rounded-full relative p-0.5 cursor-pointer " + (isActive ? "bg-tertiary/20" : "bg-slate-800");
+    const toggleDot = document.createElement("div");
+    toggleDot.className = "absolute top-0.5 bottom-0.5 w-3 rounded-full " + (isActive ? "right-0.5 bg-tertiary" : "left-0.5 bg-slate-600");
+    toggle.appendChild(toggleDot);
+    td3.appendChild(toggle);
+    tr.appendChild(td3);
+
+    /* Groups */
+    const td4 = document.createElement("td");
+    td4.className = "px-6 py-4";
+    const groupWrap = document.createElement("div");
+    groupWrap.className = "flex gap-1";
+    if (k.groups?.length) {
+      k.groups.forEach(g => {
+        const chip = document.createElement("span");
+        chip.className = "px-2 py-0.5 bg-white/5 rounded-sm text-[10px] text-slate-400 border border-white/10 uppercase font-bold";
+        chip.textContent = g;
+        groupWrap.appendChild(chip);
+      });
+    } else {
+      const noGroup = document.createElement("span");
+      noGroup.className = "text-[10px] text-slate-600 italic";
+      noGroup.textContent = "No groups";
+      groupWrap.appendChild(noGroup);
+    }
+    td4.appendChild(groupWrap);
+    tr.appendChild(td4);
+
+    /* Created */
+    const td5 = document.createElement("td");
+    td5.className = "px-6 py-4 font-mono text-xs text-slate-500";
+    td5.textContent = fmtDate(k.created_at);
+    tr.appendChild(td5);
+
+    /* Usage sparkline */
+    const td6 = document.createElement("td");
+    td6.className = "px-6 py-4";
+    const usageWrap = document.createElement("div");
+    usageWrap.className = "flex items-end gap-0.5 h-6";
+    const usage = k.today_calls ?? 0;
+    const heights = [2, 4, 3, 5, 6];
+    heights.forEach((h, i) => {
+      const bar = document.createElement("div");
+      bar.className = "w-1 bg-primary/" + (20 + i * 20);
+      bar.style.height = (usage > 0 ? h : 1) + "px";
+      usageWrap.appendChild(bar);
     });
+    const usageCount = document.createElement("span");
+    usageCount.className = "ml-2 text-xs font-mono font-bold " + (usage > 0 ? "text-primary" : "text-slate-600");
+    usageCount.textContent = fmt(usage);
+    usageWrap.appendChild(usageCount);
+    td6.appendChild(usageWrap);
+    tr.appendChild(td6);
 
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  wrap.appendChild(table);
+  tableWrap.appendChild(table);
+  wrap.appendChild(tableWrap);
   return wrap;
 }
 
 function renderKeyInspector(key) {
-  const panel = document.createElement("div");
-  panel.className = "split-inspector";
+  const panel = document.createElement("aside");
+  panel.className = "w-96 bg-surface-container-high border-l border-white/5 flex flex-col p-6 gap-6 relative overflow-y-auto";
   panel.id = "key-inspector";
 
   if (!key) {
     const empty = document.createElement("div");
-    empty.style.cssText = "color:var(--text-muted);font-size:12px;text-align:center;padding:40px 0;";
-    empty.textContent = "키를 선택하세요";
+    empty.className = "flex flex-col items-center justify-center h-full text-slate-600";
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined text-4xl mb-4";
+    icon.textContent = "vpn_key";
+    empty.appendChild(icon);
+    const txt = document.createElement("div");
+    txt.className = "text-xs uppercase tracking-widest";
+    txt.textContent = "SELECT A KEY TO INSPECT";
+    empty.appendChild(txt);
     panel.appendChild(empty);
     return panel;
   }
 
-  const titleEl = document.createElement("div");
-  titleEl.className = "inspector-title";
-  titleEl.textContent = key.name || "";
-  panel.appendChild(titleEl);
+  /* Inspector Header */
+  const headerDiv = document.createElement("div");
+  headerDiv.className = "flex items-center justify-between";
+  const headerLabel = document.createElement("h3");
+  headerLabel.className = "text-xs font-bold text-slate-400 tracking-widest uppercase font-label flex items-center gap-2";
+  const infoIcon = document.createElement("span");
+  infoIcon.className = "material-symbols-outlined text-primary text-lg";
+  infoIcon.textContent = "info";
+  headerLabel.appendChild(infoIcon);
+  headerLabel.appendChild(document.createTextNode("KEY INSPECTOR"));
+  headerDiv.appendChild(headerLabel);
+  panel.appendChild(headerDiv);
 
-  const fields = [
-    { label: "ID", value: key.id, mono: true },
-    { label: "접두사", value: key.key_prefix || "", mono: true },
-    { label: "상태", value: key.status },
-    { label: "권한", value: JSON.stringify(key.permissions || []) },
-    { label: "일일 한도", value: fmt(key.daily_limit ?? 0) },
-    { label: "생성일", value: fmtDate(key.created_at) }
-  ];
+  /* Key Identity Card */
+  const idCard = document.createElement("div");
+  idCard.className = "bg-surface-container-highest p-4 rounded-sm border-l-2 border-primary";
 
-  fields.forEach(f => {
-    const field = document.createElement("div");
-    field.className = "inspector-field";
-    const lbl = document.createElement("div");
-    lbl.className = "inspector-label";
+  const idHeader = document.createElement("div");
+  idHeader.className = "flex justify-between items-start mb-4";
+  const idLeft = document.createElement("div");
+  const idName = document.createElement("h4");
+  idName.className = "text-on-surface font-bold text-lg leading-tight";
+  idName.textContent = key.name ?? "";
+  idLeft.appendChild(idName);
+  const idPrefix = document.createElement("p");
+  idPrefix.className = "text-xs font-mono text-primary mt-1";
+  idPrefix.textContent = key.key_prefix ?? "";
+  idLeft.appendChild(idPrefix);
+  idHeader.appendChild(idLeft);
+  const statusBadge = document.createElement("div");
+  const isActive = key.status === "active";
+  statusBadge.className = "px-2 py-1 text-[10px] font-bold rounded-sm border " + (isActive ? "bg-tertiary/10 text-tertiary border-tertiary/20" : "bg-slate-800 text-slate-500 border-slate-700");
+  statusBadge.textContent = (key.status ?? "").toUpperCase();
+  idHeader.appendChild(statusBadge);
+  idCard.appendChild(idHeader);
+
+  const idFields = document.createElement("div");
+  idFields.className = "space-y-3";
+  [
+    { label: "Daily Limit", value: fmt(key.daily_limit ?? 0) + " req" },
+    { label: "Today Usage", value: fmt(key.today_calls ?? 0) + " req" },
+    { label: "Created", value: fmtDate(key.created_at) }
+  ].forEach(f => {
+    const row = document.createElement("div");
+    row.className = "flex justify-between items-center";
+    const lbl = document.createElement("span");
+    lbl.className = "text-xs text-slate-400";
     lbl.textContent = f.label;
-    field.appendChild(lbl);
-    const val = document.createElement("div");
-    val.className = "inspector-value";
-    if (f.mono) val.style.fontFamily = "var(--font-mono)";
+    row.appendChild(lbl);
+    const val = document.createElement("span");
+    val.className = "text-xs font-mono text-on-surface";
     val.textContent = f.value;
-    field.appendChild(val);
-    panel.appendChild(field);
+    row.appendChild(val);
+    idFields.appendChild(row);
   });
+  idCard.appendChild(idFields);
+  panel.appendChild(idCard);
 
-  const actions = document.createElement("div");
-  actions.className = "inspector-actions";
+  /* Danger Zone */
+  const danger = document.createElement("div");
+  danger.className = "pt-6 border-t border-white/5 mt-auto";
+  const dangerLabel = document.createElement("p");
+  dangerLabel.className = "text-[10px] font-bold text-error tracking-widest uppercase mb-3 font-label";
+  dangerLabel.textContent = "DANGER ZONE";
+  danger.appendChild(dangerLabel);
 
-  const isActive     = key.status === "active";
-  const toggleLabel  = isActive ? "비활성화" : "활성화";
+  const dangerGrid = document.createElement("div");
+  dangerGrid.className = "grid grid-cols-2 gap-3";
+
   const toggleStatus = isActive ? "inactive" : "active";
-
   const toggleBtn = document.createElement("button");
-  toggleBtn.className = "btn btn-sm";
-  toggleBtn.textContent = toggleLabel;
+  toggleBtn.className = "py-2 border border-error/30 text-error text-[10px] font-bold rounded-sm hover:bg-error/10 transition-all uppercase";
+  toggleBtn.textContent = isActive ? "REVOKE KEY" : "ACTIVATE KEY";
   toggleBtn.dataset.keyAction = "toggle";
   toggleBtn.dataset.keyId     = key.id;
   toggleBtn.dataset.status    = toggleStatus;
-  actions.appendChild(toggleBtn);
+  dangerGrid.appendChild(toggleBtn);
 
   const delBtn = document.createElement("button");
-  delBtn.className = "btn btn-sm btn-danger";
-  delBtn.textContent = "삭제";
+  delBtn.className = "py-2 bg-error text-on-error text-[10px] font-bold rounded-sm hover:brightness-110 transition-all uppercase";
+  delBtn.textContent = "DELETE PERMANENTLY";
   delBtn.dataset.keyAction = "delete";
   delBtn.dataset.keyId     = key.id;
-  actions.appendChild(delBtn);
+  dangerGrid.appendChild(delBtn);
 
-  panel.appendChild(actions);
+  danger.appendChild(dangerGrid);
+  panel.appendChild(danger);
+
   return panel;
 }
 
@@ -880,35 +1183,46 @@ async function renderKeys(container) {
   container.appendChild(loadingHtml());
 
   const res = await api("/keys");
-  if (res.ok) state.keys = res.data || [];
+  if (res.ok) state.keys = res.data ?? [];
 
-  const selectedKey = state.keys.find(k => k.id === state.selectedKeyId) || null;
+  const selectedKey = state.keys.find(k => k.id === state.selectedKeyId) ?? null;
 
   container.textContent = "";
 
   /* Header */
   const header = document.createElement("div");
-  header.className = "section-header";
-  const sTitle = document.createElement("div");
-  sTitle.className = "section-title";
-  sTitle.textContent = "API 키 목록";
-  header.appendChild(sTitle);
+  header.className = "flex justify-between items-end mb-8";
+  const headerLeft = document.createElement("div");
+  const h2 = document.createElement("h2");
+  h2.className = "text-2xl font-headline font-bold text-on-surface tracking-tight";
+  h2.textContent = "API Key Management";
+  headerLeft.appendChild(h2);
+  const subtitle = document.createElement("p");
+  subtitle.className = "text-sm text-slate-400 mt-1";
+  subtitle.textContent = "Operational key cycles and group access control.";
+  headerLeft.appendChild(subtitle);
+  header.appendChild(headerLeft);
+
   const createBtn = document.createElement("button");
-  createBtn.className = "btn btn-primary btn-sm";
+  createBtn.className = "px-5 py-2.5 bg-primary-container text-on-primary-fixed font-bold text-sm tracking-tight rounded-sm flex items-center gap-2 hover:shadow-[0_0_20px_rgba(0,210,255,0.3)] transition-all";
   createBtn.id = "create-key-btn";
-  createBtn.textContent = "키 생성";
+  const addIcon = document.createElement("span");
+  addIcon.className = "material-symbols-outlined text-lg";
+  addIcon.textContent = "add";
+  createBtn.appendChild(addIcon);
+  createBtn.appendChild(document.createTextNode("CREATE API KEY"));
   header.appendChild(createBtn);
   container.appendChild(header);
 
+  /* KPI Row */
   container.appendChild(renderKeyKpiRow(state.keys));
 
   /* Split layout */
   const split = document.createElement("div");
-  split.className = "split-layout";
-  const mainDiv = document.createElement("div");
-  mainDiv.className = "split-main";
-  mainDiv.appendChild(renderKeyTable(state.keys));
-  split.appendChild(mainDiv);
+  split.className = "flex gap-0";
+  split.style.minHeight = "400px";
+
+  split.appendChild(renderKeyTable(state.keys));
   split.appendChild(renderKeyInspector(selectedKey));
   container.appendChild(split);
 
@@ -928,12 +1242,12 @@ async function renderKeys(container) {
     g1.className = "form-group";
     const l1 = document.createElement("label");
     l1.className = "form-label";
-    l1.textContent = "이름";
+    l1.textContent = "KEY NAME / IDENTIFIER";
     g1.appendChild(l1);
     const nameInput = document.createElement("input");
     nameInput.className = "form-input";
     nameInput.id = "modal-key-name";
-    nameInput.placeholder = "예: prod-service-a";
+    nameInput.placeholder = "e.g. analytical-hub-prod";
     g1.appendChild(nameInput);
     form.appendChild(g1);
 
@@ -941,7 +1255,7 @@ async function renderKeys(container) {
     g2.className = "form-group";
     const l2 = document.createElement("label");
     l2.className = "form-label";
-    l2.textContent = "일일 한도";
+    l2.textContent = "DAILY RATE LIMIT";
     g2.appendChild(l2);
     const limitInput = document.createElement("input");
     limitInput.className = "form-input";
@@ -951,18 +1265,18 @@ async function renderKeys(container) {
     g2.appendChild(limitInput);
     form.appendChild(g2);
 
-    showModal("API 키 생성", form, [
-      { id: "create", label: "생성", cls: "btn-primary", handler: async () => {
+    showModal("Generate New API Credential", form, [
+      { id: "create", label: "GENERATE AND VIEW SECRET", cls: "btn-primary", handler: async () => {
         const name        = document.getElementById("modal-key-name")?.value.trim();
         const daily_limit = parseInt(document.getElementById("modal-key-limit")?.value) || 10000;
-        if (!name) { showToast("이름을 입력하세요", "warning"); return; }
+        if (!name) { showToast("Name required", "warning"); return; }
         const res = await api("/keys", { method: "POST", body: { name, daily_limit } });
         closeModal();
         if (res.ok && res.data?.raw_key) {
           const keyDisplay = document.createElement("div");
           const note = document.createElement("p");
-          note.style.cssText = "font-size:13px;color:var(--text-secondary);margin-bottom:12px;";
-          note.textContent = "이 키는 다시 표시되지 않습니다. 안전하게 보관하세요.";
+          note.className = "text-xs text-primary leading-relaxed mb-4";
+          note.textContent = "This secret key will only be displayed once. Store it in a secure vault.";
           keyDisplay.appendChild(note);
 
           const copyWrap = document.createElement("div");
@@ -973,18 +1287,18 @@ async function renderKeys(container) {
           copyWrap.appendChild(copyVal);
           const copyBtn = document.createElement("button");
           copyBtn.className = "copy-btn";
-          copyBtn.textContent = "복사";
+          copyBtn.textContent = "COPY";
           copyBtn.addEventListener("click", () => {
-            navigator.clipboard.writeText(res.data.raw_key).then(() => showToast("복사됨", "success"));
+            navigator.clipboard.writeText(res.data.raw_key).then(() => showToast("Copied", "success"));
           });
           copyWrap.appendChild(copyBtn);
           keyDisplay.appendChild(copyWrap);
 
-          showModal("키 생성 완료", keyDisplay, [
-            { id: "done", label: "완료", cls: "btn-primary", handler: () => { closeModal(); renderKeys(container); } }
+          showModal("Credential Generated", keyDisplay, [
+            { id: "done", label: "DONE", cls: "btn-primary", handler: () => { closeModal(); renderKeys(container); } }
           ]);
         } else {
-          showToast(res.data?.error || "생성 실패", "error");
+          showToast(res.data?.error ?? "Generation failed", "error");
           renderKeys(container);
         }
       }}
@@ -1001,12 +1315,13 @@ async function renderKeys(container) {
       if (action === "toggle") {
         const newStatus = btn.dataset.status;
         const msg = document.createElement("span");
-        msg.textContent = "이 키를 " + newStatus + " 상태로 변경하시겠습니까?";
-        showModal("상태 변경 확인", msg, [
-          { id: "confirm", label: "변경", cls: "btn-primary", handler: async () => {
+        msg.className = "text-sm text-slate-300";
+        msg.textContent = "Change this key to " + newStatus + " status?";
+        showModal("Confirm Status Change", msg, [
+          { id: "confirm", label: "CONFIRM", cls: "btn-primary", handler: async () => {
             await api("/keys/" + keyId, { method: "PUT", body: { status: newStatus } });
             closeModal();
-            showToast("상태 변경 완료", "success");
+            showToast("Status updated", "success");
             renderKeys(container);
           }}
         ]);
@@ -1014,14 +1329,14 @@ async function renderKeys(container) {
 
       if (action === "delete") {
         const msg = document.createElement("span");
-        msg.style.color = "var(--accent-red)";
-        msg.textContent = "이 작업은 되돌릴 수 없습니다. 삭제하시겠습니까?";
-        showModal("키 삭제 확인", msg, [
-          { id: "confirm", label: "삭제", cls: "btn-danger", handler: async () => {
+        msg.className = "text-sm text-error";
+        msg.textContent = "This action is irreversible. Delete permanently?";
+        showModal("Confirm Permanent Deletion", msg, [
+          { id: "confirm", label: "DELETE", cls: "btn-danger", handler: async () => {
             await api("/keys/" + keyId, { method: "DELETE" });
             closeModal();
             state.selectedKeyId = null;
-            showToast("키 삭제 완료", "success");
+            showToast("Key deleted", "success");
             renderKeys(container);
           }}
         ]);
@@ -1037,32 +1352,41 @@ async function renderKeys(container) {
 function renderGroupCards(groups) {
   if (!groups.length) {
     const empty = document.createElement("div");
-    empty.style.cssText = "color:var(--text-muted);font-size:12px;";
+    empty.className = "text-sm text-slate-600 py-8 text-center";
     empty.textContent = "그룹이 없습니다";
     return empty;
   }
 
   const grid = document.createElement("div");
-  grid.className = "group-grid";
+  grid.className = "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8";
 
   groups.forEach(g => {
     const card = document.createElement("div");
-    card.className = "group-card" + (g.id === state.selectedGroupId ? " selected" : "");
+    card.className = "bg-surface-container-low p-5 cursor-pointer border-l-2 transition-all hover:bg-surface-container-high " + (g.id === state.selectedGroupId ? "border-primary bg-primary/5" : "border-transparent");
     card.dataset.groupId = g.id;
 
+    const nameRow = document.createElement("div");
+    nameRow.className = "flex items-center gap-3 mb-2";
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined text-lg text-secondary";
+    icon.textContent = "shield";
+    nameRow.appendChild(icon);
     const name = document.createElement("div");
-    name.className = "group-name";
+    name.className = "text-sm font-bold text-on-surface";
     name.textContent = g.name;
-    card.appendChild(name);
+    nameRow.appendChild(name);
+    card.appendChild(nameRow);
 
-    const desc = document.createElement("div");
-    desc.className = "group-desc";
-    desc.textContent = g.description || "";
-    card.appendChild(desc);
+    if (g.description) {
+      const desc = document.createElement("div");
+      desc.className = "text-xs text-slate-400 mb-2";
+      desc.textContent = g.description;
+      card.appendChild(desc);
+    }
 
     const count = document.createElement("div");
-    count.className = "group-count";
-    count.textContent = "멤버: " + fmt(g.member_count ?? 0);
+    count.className = "text-[10px] text-slate-500 uppercase font-mono";
+    count.textContent = fmt(g.member_count ?? 0) + " Members";
     card.appendChild(count);
 
     grid.appendChild(card);
@@ -1079,28 +1403,35 @@ async function renderGroups(container) {
     api("/groups"),
     api("/keys")
   ]);
-  if (gRes.ok) state.groups = gRes.data || [];
-  if (kRes.ok) state.keys   = kRes.data || [];
+  if (gRes.ok) state.groups = gRes.data ?? [];
+  if (kRes.ok) state.keys   = kRes.data ?? [];
 
-  const selected = state.groups.find(g => g.id === state.selectedGroupId) || null;
+  const selected = state.groups.find(g => g.id === state.selectedGroupId) ?? null;
   let members = [];
   if (selected) {
     const mRes = await api("/groups/" + selected.id + "/members");
-    if (mRes.ok) members = mRes.data || [];
+    if (mRes.ok) members = mRes.data ?? [];
   }
 
   container.textContent = "";
 
   /* Header */
   const header = document.createElement("div");
-  header.className = "section-header";
-  const sTitle = document.createElement("div");
-  sTitle.className = "section-title";
-  sTitle.textContent = "그룹 목록";
-  header.appendChild(sTitle);
+  header.className = "flex justify-between items-end mb-8";
+  const headerLeft = document.createElement("div");
+  const h2 = document.createElement("h2");
+  h2.className = "text-2xl font-headline font-bold text-on-surface tracking-tight";
+  h2.textContent = "Group Management";
+  headerLeft.appendChild(h2);
+  header.appendChild(headerLeft);
+
   const createBtn = document.createElement("button");
-  createBtn.className = "btn btn-primary btn-sm";
-  createBtn.textContent = "그룹 생성";
+  createBtn.className = "px-5 py-2.5 bg-primary-container text-on-primary-fixed font-bold text-sm tracking-tight rounded-sm flex items-center gap-2 hover:shadow-[0_0_20px_rgba(0,210,255,0.3)] transition-all";
+  const addIcon = document.createElement("span");
+  addIcon.className = "material-symbols-outlined text-lg";
+  addIcon.textContent = "add";
+  createBtn.appendChild(addIcon);
+  createBtn.appendChild(document.createTextNode("CREATE GROUP"));
   header.appendChild(createBtn);
   container.appendChild(header);
 
@@ -1108,44 +1439,48 @@ async function renderGroups(container) {
 
   /* Group detail */
   if (selected) {
-    const detail = document.createElement("div");
-    detail.className = "panel";
-    detail.style.marginTop = "20px";
+    const detail = document.createElement("section");
+    detail.className = "bg-surface-container-low p-6 rounded-sm shadow-xl";
     detail.id = "group-detail";
 
     const dHeader = document.createElement("div");
-    dHeader.className = "section-header";
-    const dTitle = document.createElement("div");
-    dTitle.className = "panel-title";
-    dTitle.textContent = selected.name + " -- 멤버";
-    dHeader.appendChild(dTitle);
+    dHeader.className = "flex justify-between items-center mb-6";
+    const dLeft = document.createElement("div");
+    dLeft.className = "flex items-center gap-3";
+    const dAcc = document.createElement("div");
+    dAcc.className = "w-1 h-5 bg-secondary";
+    dLeft.appendChild(dAcc);
+    const dTitle = document.createElement("h3");
+    dTitle.className = "font-headline text-lg font-bold tracking-tight";
+    dTitle.textContent = selected.name + " -- Members";
+    dLeft.appendChild(dTitle);
+    dHeader.appendChild(dLeft);
 
     const dBtns = document.createElement("div");
-    dBtns.style.cssText = "display:flex;gap:8px;";
-
+    dBtns.className = "flex gap-3";
     const addBtn = document.createElement("button");
     addBtn.className = "btn btn-sm";
     addBtn.id = "add-member-btn";
-    addBtn.textContent = "멤버 추가";
+    addBtn.textContent = "ADD MEMBER";
     dBtns.appendChild(addBtn);
-
     const delGrpBtn = document.createElement("button");
     delGrpBtn.className = "btn btn-sm btn-danger";
     delGrpBtn.id = "delete-group-btn";
-    delGrpBtn.textContent = "그룹 삭제";
+    delGrpBtn.textContent = "DELETE GROUP";
     dBtns.appendChild(delGrpBtn);
-
     dHeader.appendChild(dBtns);
     detail.appendChild(dHeader);
 
-    const tWrap = document.createElement("div");
-    tWrap.className = "data-table-wrap";
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "overflow-x-auto";
     const table = document.createElement("table");
-    table.className = "data-table";
+    table.className = "w-full text-left border-collapse";
     const thead = document.createElement("thead");
     const hRow = document.createElement("tr");
-    ["이름", "접두사", "작업"].forEach(h => {
+    hRow.className = "bg-white/5 border-b border-white/5";
+    ["Name", "Prefix", "Action"].forEach(h => {
       const th = document.createElement("th");
+      th.className = "px-6 py-3 text-[10px] font-bold text-slate-400 tracking-widest uppercase font-label";
       th.textContent = h;
       hRow.appendChild(th);
     });
@@ -1153,20 +1488,24 @@ async function renderGroups(container) {
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
+    tbody.className = "divide-y divide-white/5";
     if (members.length) {
       members.forEach(m => {
         const tr = document.createElement("tr");
+        tr.className = "hover:bg-white/5 transition-colors";
         const td1 = document.createElement("td");
-        td1.textContent = m.name || "";
+        td1.className = "px-6 py-3 text-sm text-on-surface";
+        td1.textContent = m.name ?? "";
         tr.appendChild(td1);
         const td2 = document.createElement("td");
-        td2.style.fontFamily = "var(--font-mono)";
-        td2.textContent = m.key_prefix || "";
+        td2.className = "px-6 py-3 font-mono text-xs text-primary";
+        td2.textContent = m.key_prefix ?? "";
         tr.appendChild(td2);
         const td3 = document.createElement("td");
+        td3.className = "px-6 py-3";
         const rmBtn = document.createElement("button");
         rmBtn.className = "btn btn-sm btn-danger";
-        rmBtn.textContent = "제거";
+        rmBtn.textContent = "REMOVE";
         rmBtn.dataset.removeMember = m.id;
         td3.appendChild(rmBtn);
         tr.appendChild(td3);
@@ -1176,14 +1515,14 @@ async function renderGroups(container) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
       td.colSpan = 3;
-      td.style.color = "var(--text-muted)";
-      td.textContent = "멤버 없음";
+      td.className = "px-6 py-6 text-center text-slate-600 text-sm";
+      td.textContent = "No members";
       tr.appendChild(td);
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
-    tWrap.appendChild(table);
-    detail.appendChild(tWrap);
+    tableWrap.appendChild(table);
+    detail.appendChild(tableWrap);
     container.appendChild(detail);
 
     /* Event: add member */
@@ -1193,7 +1532,7 @@ async function renderGroups(container) {
       g1.className = "form-group";
       const l1 = document.createElement("label");
       l1.className = "form-label";
-      l1.textContent = "API 키 선택";
+      l1.textContent = "SELECT API KEY";
       g1.appendChild(l1);
       const sel = document.createElement("select");
       sel.className = "form-select";
@@ -1201,19 +1540,19 @@ async function renderGroups(container) {
       state.keys.forEach(k => {
         const opt = document.createElement("option");
         opt.value = k.id;
-        opt.textContent = k.name + " (" + (k.key_prefix || "") + ")";
+        opt.textContent = k.name + " (" + (k.key_prefix ?? "") + ")";
         sel.appendChild(opt);
       });
       g1.appendChild(sel);
       form.appendChild(g1);
 
-      showModal("멤버 추가", form, [
-        { id: "add", label: "추가", cls: "btn-primary", handler: async () => {
+      showModal("Add Member", form, [
+        { id: "add", label: "ADD", cls: "btn-primary", handler: async () => {
           const keyId = document.getElementById("modal-member-key")?.value;
           if (!keyId) return;
           await api("/groups/" + state.selectedGroupId + "/members", { method: "POST", body: { key_id: keyId } });
           closeModal();
-          showToast("멤버 추가 완료", "success");
+          showToast("Member added", "success");
           renderGroups(container);
         }}
       ]);
@@ -1225,7 +1564,7 @@ async function renderGroups(container) {
         e.stopPropagation();
         const keyId = btn.dataset.removeMember;
         await api("/groups/" + state.selectedGroupId + "/members/" + keyId, { method: "DELETE" });
-        showToast("멤버 제거 완료", "success");
+        showToast("Member removed", "success");
         renderGroups(container);
       });
     });
@@ -1233,14 +1572,14 @@ async function renderGroups(container) {
     /* Event: delete group */
     delGrpBtn.addEventListener("click", () => {
       const msg = document.createElement("span");
-      msg.style.color = "var(--accent-red)";
-      msg.textContent = "이 그룹을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.";
-      showModal("그룹 삭제 확인", msg, [
-        { id: "confirm", label: "삭제", cls: "btn-danger", handler: async () => {
+      msg.className = "text-sm text-error";
+      msg.textContent = "This action is irreversible. Delete this group?";
+      showModal("Confirm Group Deletion", msg, [
+        { id: "confirm", label: "DELETE", cls: "btn-danger", handler: async () => {
           await api("/groups/" + state.selectedGroupId, { method: "DELETE" });
           closeModal();
           state.selectedGroupId = null;
-          showToast("그룹 삭제 완료", "success");
+          showToast("Group deleted", "success");
           renderGroups(container);
         }}
       ]);
@@ -1248,7 +1587,7 @@ async function renderGroups(container) {
   }
 
   /* Event: group card click */
-  container.querySelectorAll(".group-card").forEach(card => {
+  container.querySelectorAll("[data-group-id]").forEach(card => {
     card.addEventListener("click", () => {
       state.selectedGroupId = card.dataset.groupId;
       renderGroups(container);
@@ -1263,12 +1602,12 @@ async function renderGroups(container) {
     g1.className = "form-group";
     const l1 = document.createElement("label");
     l1.className = "form-label";
-    l1.textContent = "이름";
+    l1.textContent = "GROUP NAME";
     g1.appendChild(l1);
     const nameInput = document.createElement("input");
     nameInput.className = "form-input";
     nameInput.id = "modal-group-name";
-    nameInput.placeholder = "예: team-alpha";
+    nameInput.placeholder = "e.g. CORE_OPERATIONS";
     g1.appendChild(nameInput);
     form.appendChild(g1);
 
@@ -1276,71 +1615,83 @@ async function renderGroups(container) {
     g2.className = "form-group";
     const l2 = document.createElement("label");
     l2.className = "form-label";
-    l2.textContent = "설명";
+    l2.textContent = "DESCRIPTION";
     g2.appendChild(l2);
     const descInput = document.createElement("input");
     descInput.className = "form-input";
     descInput.id = "modal-group-desc";
-    descInput.placeholder = "(선택)";
+    descInput.placeholder = "(optional)";
     g2.appendChild(descInput);
     form.appendChild(g2);
 
-    showModal("그룹 생성", form, [
-      { id: "create", label: "생성", cls: "btn-primary", handler: async () => {
+    showModal("Create New Group", form, [
+      { id: "create", label: "CREATE", cls: "btn-primary", handler: async () => {
         const name = document.getElementById("modal-group-name")?.value.trim();
         const description = document.getElementById("modal-group-desc")?.value.trim() || null;
-        if (!name) { showToast("이름을 입력하세요", "warning"); return; }
+        if (!name) { showToast("Name required", "warning"); return; }
         const res = await api("/groups", { method: "POST", body: { name, description } });
         closeModal();
-        if (res.ok) { showToast("그룹 생성 완료", "success"); renderGroups(container); }
-        else showToast(res.data?.error || "생성 실패", "error");
+        if (res.ok) { showToast("Group created", "success"); renderGroups(container); }
+        else showToast(res.data?.error ?? "Creation failed", "error");
       }}
     ]);
   });
 }
 
 /* ================================================================
-   12. Memory Operations View
+   12. Memory Operations View (Stitch Screen 3)
    ================================================================ */
 
 function renderMemoryFilters() {
   const types = ["", "fact", "error", "decision", "procedure", "preference"];
 
   const bar = document.createElement("div");
-  bar.className = "filter-bar";
+  bar.className = "flex items-center justify-between gap-4 bg-surface-container-low p-2 rounded-sm border-l-2 border-primary/40 mb-6";
   bar.id = "memory-filters";
 
-  const topicInput = document.createElement("input");
-  topicInput.className = "form-input";
-  topicInput.id = "filter-topic";
-  topicInput.placeholder = "토픽 검색...";
-  topicInput.value = state.memoryFilter.topic;
-  bar.appendChild(topicInput);
+  const leftChips = document.createElement("div");
+  leftChips.className = "flex gap-2";
 
+  /* Topic chip */
+  const topicInput = document.createElement("input");
+  topicInput.className = "px-3 py-1 bg-surface-variant text-[10px] font-bold text-primary rounded-sm border border-primary/10 placeholder:text-slate-500 w-32";
+  topicInput.id = "filter-topic";
+  topicInput.placeholder = "TOPIC: ALL";
+  topicInput.value = state.memoryFilter.topic;
+  leftChips.appendChild(topicInput);
+
+  /* Type chip */
   const typeSelect = document.createElement("select");
-  typeSelect.className = "form-select";
+  typeSelect.className = "px-3 py-1 bg-surface-variant text-[10px] font-bold text-slate-400 rounded-sm border-none";
   typeSelect.id = "filter-type";
   types.forEach(t => {
     const opt = document.createElement("option");
     opt.value = t;
-    opt.textContent = t || "전체 타입";
+    opt.textContent = t ? "TYPE: " + t.toUpperCase() : "TYPE: ALL";
     if (state.memoryFilter.type === t) opt.selected = true;
     typeSelect.appendChild(opt);
   });
-  bar.appendChild(typeSelect);
+  leftChips.appendChild(typeSelect);
 
+  /* Key chip */
   const keyInput = document.createElement("input");
-  keyInput.className = "form-input";
+  keyInput.className = "px-3 py-1 bg-surface-variant text-[10px] font-bold text-slate-400 rounded-sm border-none placeholder:text-slate-500 w-24";
   keyInput.id = "filter-key-id";
-  keyInput.placeholder = "key_id";
+  keyInput.placeholder = "KEY: *";
   keyInput.value = state.memoryFilter.key_id;
-  keyInput.style.minWidth = "120px";
-  bar.appendChild(keyInput);
+  leftChips.appendChild(keyInput);
 
+  bar.appendChild(leftChips);
+
+  /* Search button */
   const searchBtn = document.createElement("button");
-  searchBtn.className = "btn btn-sm";
+  searchBtn.className = "flex items-center gap-2 bg-transparent border border-outline-variant px-4 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/5 transition-all";
   searchBtn.id = "filter-search";
-  searchBtn.textContent = "검색";
+  const searchIcon = document.createElement("span");
+  searchIcon.className = "material-symbols-outlined text-[14px]";
+  searchIcon.textContent = "search";
+  searchBtn.appendChild(searchIcon);
+  searchBtn.appendChild(document.createTextNode("SEARCH"));
   bar.appendChild(searchBtn);
 
   return bar;
@@ -1349,145 +1700,201 @@ function renderMemoryFilters() {
 function renderFragmentList(fragments) {
   if (!fragments || !fragments.length) {
     const empty = document.createElement("div");
-    empty.style.cssText = "color:var(--text-muted);font-size:12px;padding:20px 0;";
+    empty.className = "text-sm text-slate-600 py-8 text-center";
     empty.textContent = "결과 없음";
     return empty;
   }
 
-  const wrap = document.createElement("div");
-  wrap.className = "data-table-wrap";
+  const panel = document.createElement("section");
+  panel.className = "glass-panel rounded-sm p-6 shadow-2xl relative overflow-hidden";
 
-  const table = document.createElement("table");
-  table.className = "data-table";
-  table.id = "fragment-table";
+  const title = document.createElement("h2");
+  title.className = "font-headline text-lg font-bold text-cyan-100 flex items-center gap-3 mb-6 uppercase tracking-widest";
+  const titleBar = document.createElement("span");
+  titleBar.className = "w-1 h-4 bg-cyan-400";
+  title.appendChild(titleBar);
+  title.appendChild(document.createTextNode("Search Explorer"));
+  panel.appendChild(title);
 
-  const thead = document.createElement("thead");
-  const hRow = document.createElement("tr");
-  ["타입", "토픽", "내용", "생성일"].forEach(h => {
-    const th = document.createElement("th");
-    th.textContent = h;
-    hRow.appendChild(th);
-  });
-  thead.appendChild(hRow);
-  table.appendChild(thead);
+  const list = document.createElement("div");
+  list.className = "space-y-3";
+  list.id = "fragment-table";
 
-  const tbody = document.createElement("tbody");
   fragments.forEach(f => {
-    const tr = document.createElement("tr");
-    if (f.id === state.selectedFragment?.id) tr.classList.add("selected");
-    tr.dataset.fragId = f.id;
+    const item = document.createElement("div");
+    item.className = "bg-surface-container-low p-4 hover:bg-surface-container-high transition-all group border-l border-transparent hover:border-cyan-400/50 cursor-pointer" + (f.id === state.selectedFragment?.id ? " border-cyan-400/50 bg-surface-container-high" : "");
+    item.dataset.fragId = f.id;
 
-    const td1 = document.createElement("td");
-    const badge = document.createElement("span");
-    badge.className = "timeline-badge badge-" + (f.type || "fact");
-    badge.style.fontSize = "9px";
-    badge.textContent = f.type || "?";
-    td1.appendChild(badge);
-    tr.appendChild(td1);
+    /* Top row */
+    const topRow = document.createElement("div");
+    topRow.className = "flex justify-between items-start mb-2";
+    const topLeft = document.createElement("div");
+    topLeft.className = "flex items-center gap-3";
+    const idBadge = document.createElement("span");
+    idBadge.className = "text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5";
+    idBadge.textContent = "#MEM_" + (f.id ?? "").toString().slice(-5).padStart(5, "0");
+    topLeft.appendChild(idBadge);
+    const topicSpan = document.createElement("span");
+    topicSpan.className = "text-xs font-bold text-on-surface uppercase tracking-wider";
+    topicSpan.textContent = f.topic ?? "(무제)";
+    topLeft.appendChild(topicSpan);
+    topRow.appendChild(topLeft);
 
-    const td2 = document.createElement("td");
-    td2.textContent = f.topic || "(무제)";
-    tr.appendChild(td2);
+    const topRight = document.createElement("div");
+    topRight.className = "flex items-center gap-4 text-right";
+    const scoreDiv = document.createElement("div");
+    const scoreLbl = document.createElement("div");
+    scoreLbl.className = "text-[9px] text-slate-500 font-mono";
+    scoreLbl.textContent = "IMPORTANCE";
+    scoreDiv.appendChild(scoreLbl);
+    const scoreVal = document.createElement("div");
+    scoreVal.className = "text-xs font-mono text-tertiary";
+    scoreVal.textContent = String(f.importance ?? "-");
+    scoreDiv.appendChild(scoreVal);
+    topRight.appendChild(scoreDiv);
+    topRow.appendChild(topRight);
+    item.appendChild(topRow);
 
-    const td3 = document.createElement("td");
-    td3.style.cssText = "max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-    td3.textContent = truncate(f.content || "", 80);
-    tr.appendChild(td3);
+    /* Content preview */
+    const preview = document.createElement("p");
+    preview.className = "text-[11px] text-slate-400 line-clamp-2 font-body leading-relaxed mb-3 italic";
+    preview.textContent = truncate(f.content ?? "", 200);
+    item.appendChild(preview);
 
-    const td4 = document.createElement("td");
-    td4.textContent = fmtDate(f.created_at);
-    tr.appendChild(td4);
+    /* Tags */
+    const tagRow = document.createElement("div");
+    tagRow.className = "flex justify-between items-center";
+    const tags = document.createElement("div");
+    tags.className = "flex gap-2";
+    const topicTag = document.createElement("span");
+    topicTag.className = "text-[9px] border border-outline-variant px-2 py-0.5 text-slate-500 uppercase";
+    topicTag.textContent = "Topic: " + (f.topic ?? "?");
+    tags.appendChild(topicTag);
+    const typeTag = document.createElement("span");
+    typeTag.className = "text-[9px] border border-outline-variant px-2 py-0.5 text-slate-500 uppercase";
+    typeTag.textContent = "Type: " + (f.type ?? "?");
+    tags.appendChild(typeTag);
+    tagRow.appendChild(tags);
 
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-  wrap.appendChild(table);
-  return wrap;
-}
+    const dateSpan = document.createElement("div");
+    dateSpan.className = "text-[9px] font-mono text-slate-600 uppercase";
+    dateSpan.textContent = fmtDate(f.created_at);
+    tagRow.appendChild(dateSpan);
+    item.appendChild(tagRow);
 
-function renderFragmentInspector(fragment) {
-  if (!fragment) return document.createDocumentFragment();
-
-  const panel = document.createElement("div");
-  panel.className = "split-inspector";
-  panel.id = "fragment-inspector";
-
-  const titleEl = document.createElement("div");
-  titleEl.className = "inspector-title";
-  titleEl.textContent = fragment.topic || "(무제)";
-  panel.appendChild(titleEl);
-
-  const content = document.createElement("div");
-  content.className = "fragment-content";
-  content.textContent = fragment.content || "";
-  panel.appendChild(content);
-
-  const meta = document.createElement("dl");
-  meta.className = "fragment-meta";
-
-  [
-    { label: "ID",        value: fragment.id },
-    { label: "타입",      value: fragment.type || "" },
-    { label: "중요도",    value: String(fragment.importance ?? "-") },
-    { label: "agent_id",  value: fragment.agent_id || "-" },
-    { label: "key_id",    value: fragment.key_id || "master" },
-    { label: "생성일",    value: fmtDate(fragment.created_at) },
-    { label: "키워드",    value: JSON.stringify(fragment.keywords || []) }
-  ].forEach(f => {
-    const dt = document.createElement("dt");
-    dt.textContent = f.label;
-    meta.appendChild(dt);
-    const dd = document.createElement("dd");
-    dd.textContent = f.value;
-    meta.appendChild(dd);
+    list.appendChild(item);
   });
 
-  panel.appendChild(meta);
+  panel.appendChild(list);
   return panel;
 }
 
 function renderAnomalyCards(anomalies) {
   if (!anomalies) return document.createDocumentFragment();
 
-  const cards = [
-    { label: "품질 미검증",   key: "qualityUnverified", cls: "warn" },
-    { label: "오래된 파편",   key: "staleFragments",    cls: "warn" },
-    { label: "검색 실패",     key: "failedSearches",    cls: "error" }
+  const panel = document.createElement("section");
+  panel.className = "glass-panel rounded-sm p-6 border-t border-error/20";
+
+  const title = document.createElement("h2");
+  title.className = "font-headline text-sm font-bold text-error flex items-center gap-3 mb-6 uppercase tracking-widest";
+  title.textContent = "Anomaly Insights";
+  panel.appendChild(title);
+
+  const list = document.createElement("div");
+  list.className = "space-y-3";
+
+  const items = [
+    { label: "Contradiction Queue",  key: "contradictions",     icon: "crisis_alert",         isCritical: true },
+    { label: "Superseded Candidates", key: "superseded",         icon: "auto_awesome_motion",  isCritical: false },
+    { label: "Low Quality Fragments", key: "qualityUnverified",  icon: "low_priority",         isCritical: false },
+    { label: "Embedding Backlog",     key: "embeddingBacklog",   icon: "memory_alt",           isCritical: false }
   ];
 
-  const grid = document.createElement("div");
-  grid.className = "anomaly-grid";
+  items.forEach(a => {
+    const row = document.createElement("div");
+    row.className = a.isCritical
+      ? "flex items-center justify-between p-3 bg-error-container/10 border-l-2 border-error"
+      : "flex items-center justify-between p-3 bg-surface-container-high";
+    row.dataset.anomaly = a.key;
 
-  cards.forEach(c => {
-    const card = document.createElement("div");
-    card.className = "anomaly-card " + c.cls;
-    card.dataset.anomaly = c.key;
+    const left = document.createElement("div");
+    left.className = "flex items-center gap-3 " + (a.isCritical ? "" : "text-slate-400");
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined text-lg" + (a.isCritical ? " text-error" : "");
+    icon.textContent = a.icon;
+    left.appendChild(icon);
+    const lbl = document.createElement("span");
+    lbl.className = "text-[10px] font-bold uppercase";
+    lbl.textContent = a.label;
+    left.appendChild(lbl);
+    row.appendChild(left);
 
-    const title = document.createElement("div");
-    title.className = "anomaly-title";
-    title.textContent = c.label;
-    card.appendChild(title);
+    const val = document.createElement("span");
+    val.className = "text-xs font-mono" + (a.isCritical ? " text-error font-bold" : "");
+    val.textContent = fmt(anomalies[a.key] ?? 0);
+    row.appendChild(val);
 
-    const count = document.createElement("div");
-    count.className = "anomaly-count";
-    count.textContent = fmt(anomalies[c.key] ?? 0);
-    card.appendChild(count);
-
-    grid.appendChild(card);
+    list.appendChild(row);
   });
 
-  return grid;
+  panel.appendChild(list);
+  return panel;
+}
+
+function renderFragmentInspector(fragment) {
+  if (!fragment) return document.createDocumentFragment();
+
+  const panel = document.createElement("section");
+  panel.className = "glass-panel rounded-sm p-6 border-t border-primary/20";
+  panel.id = "fragment-inspector";
+
+  const title = document.createElement("h2");
+  title.className = "font-headline text-sm font-bold text-cyan-100 flex items-center gap-3 mb-6 uppercase tracking-widest";
+  title.textContent = "Fragment Detail";
+  panel.appendChild(title);
+
+  const content = document.createElement("div");
+  content.className = "bg-surface-container-highest p-4 mb-4 text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap border border-white/5";
+  content.textContent = fragment.content ?? "";
+  panel.appendChild(content);
+
+  const meta = document.createElement("div");
+  meta.className = "space-y-2";
+  [
+    { label: "ID",       value: fragment.id },
+    { label: "Type",     value: fragment.type ?? "" },
+    { label: "Importance", value: String(fragment.importance ?? "-") },
+    { label: "Agent",    value: fragment.agent_id ?? "-" },
+    { label: "Key",      value: fragment.key_id ?? "master" },
+    { label: "Created",  value: fmtDate(fragment.created_at) },
+    { label: "Keywords", value: JSON.stringify(fragment.keywords ?? []) }
+  ].forEach(f => {
+    const row = document.createElement("div");
+    row.className = "flex justify-between text-[10px]";
+    const lbl = document.createElement("span");
+    lbl.className = "text-slate-500 uppercase font-mono";
+    lbl.textContent = f.label;
+    row.appendChild(lbl);
+    const val = document.createElement("span");
+    val.className = "text-slate-300 font-mono";
+    val.textContent = f.value;
+    row.appendChild(val);
+    meta.appendChild(row);
+  });
+
+  panel.appendChild(meta);
+  return panel;
 }
 
 function renderPagination() {
   if (state.memoryPages <= 1) return document.createDocumentFragment();
 
   const wrap = document.createElement("div");
-  wrap.className = "pagination";
+  wrap.className = "flex gap-2 mt-4 justify-center";
 
   for (let i = 1; i <= state.memoryPages; i++) {
     const btn = document.createElement("button");
-    btn.className = "btn btn-sm" + (i === state.memoryPage ? " active" : "");
+    btn.className = "p-1 hover:bg-white/5 rounded-sm px-3 text-xs " + (i === state.memoryPage ? "text-white border border-primary/20" : "text-slate-500");
     btn.dataset.page = i;
     btn.textContent = i;
     wrap.appendChild(btn);
@@ -1512,13 +1919,13 @@ async function renderMemory(container) {
   ]);
 
   if (fragRes.ok) {
-    const data       = fragRes.data || {};
+    const data = fragRes.data ?? {};
     if (Array.isArray(fragRes.data)) {
       state.fragments   = fragRes.data;
       state.memoryPages = 1;
     } else {
-      state.fragments   = data.fragments || [];
-      state.memoryPages = data.pages || 1;
+      state.fragments   = data.fragments ?? [];
+      state.memoryPages = data.pages ?? 1;
     }
   } else {
     state.fragments = [];
@@ -1528,24 +1935,36 @@ async function renderMemory(container) {
 
   container.textContent = "";
 
+  /* Filter bar */
   container.appendChild(renderMemoryFilters());
-  container.appendChild(renderAnomalyCards(state.anomalies));
 
-  const split = document.createElement("div");
-  split.className = "split-layout";
-  const mainDiv = document.createElement("div");
-  mainDiv.className = "split-main";
-  mainDiv.appendChild(renderFragmentList(state.fragments));
-  mainDiv.appendChild(renderPagination());
-  split.appendChild(mainDiv);
-  split.appendChild(renderFragmentInspector(state.selectedFragment));
-  container.appendChild(split);
+  /* Grid: main + right */
+  const grid = document.createElement("div");
+  grid.className = "grid grid-cols-12 gap-6";
+
+  /* Left: fragments */
+  const leftCol = document.createElement("div");
+  leftCol.className = "col-span-12 lg:col-span-8 space-y-6";
+  leftCol.appendChild(renderFragmentList(state.fragments));
+  leftCol.appendChild(renderPagination());
+  grid.appendChild(leftCol);
+
+  /* Right: analytics + anomalies */
+  const rightCol = document.createElement("div");
+  rightCol.className = "col-span-12 lg:col-span-4 space-y-6";
+
+  /* Fragment inspector */
+  rightCol.appendChild(renderFragmentInspector(state.selectedFragment));
+  rightCol.appendChild(renderAnomalyCards(state.anomalies));
+  grid.appendChild(rightCol);
+
+  container.appendChild(grid);
 
   /* Event: search */
   document.getElementById("filter-search")?.addEventListener("click", () => {
-    state.memoryFilter.topic  = document.getElementById("filter-topic")?.value || "";
-    state.memoryFilter.type   = document.getElementById("filter-type")?.value || "";
-    state.memoryFilter.key_id = document.getElementById("filter-key-id")?.value || "";
+    state.memoryFilter.topic  = document.getElementById("filter-topic")?.value ?? "";
+    state.memoryFilter.type   = document.getElementById("filter-type")?.value ?? "";
+    state.memoryFilter.key_id = document.getElementById("filter-key-id")?.value ?? "";
     state.memoryPage = 1;
     renderMemory(container);
   });
@@ -1559,9 +1978,9 @@ async function renderMemory(container) {
   });
 
   /* Event: fragment click */
-  container.querySelectorAll("#fragment-table tbody tr").forEach(tr => {
-    tr.addEventListener("click", () => {
-      state.selectedFragment = state.fragments.find(f => f.id === tr.dataset.fragId) || null;
+  container.querySelectorAll("[data-frag-id]").forEach(el => {
+    el.addEventListener("click", () => {
+      state.selectedFragment = state.fragments.find(f => f.id === el.dataset.fragId) ?? null;
       renderMemory(container);
     });
   });
@@ -1607,14 +2026,15 @@ function truncate(str, len) {
 }
 
 function relativeTime(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
+  const ts   = typeof iso === "number" ? iso : new Date(iso).getTime();
+  const diff = Date.now() - ts;
   const min  = Math.floor(diff / 60000);
-  if (min < 1) return "방금";
-  if (min < 60) return min + "분 전";
+  if (min < 1) return "just now";
+  if (min < 60) return min + "m ago";
   const hr = Math.floor(min / 60);
-  if (hr < 24) return hr + "시간 전";
+  if (hr < 24) return hr + "h ago";
   const day = Math.floor(hr / 24);
-  return day + "일 전";
+  return day + "d ago";
 }
 
 function loadingHtml() {
@@ -1653,8 +2073,9 @@ if (typeof document !== "undefined") {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     renderOverviewCards,
-    renderHealthFlags,
+    renderHealthPanel,
     renderKeyTable,
+    renderKeyKpiRow,
     renderGroupCards,
     renderMemoryFilters,
     renderFragmentList,

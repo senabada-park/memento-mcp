@@ -42,15 +42,15 @@ describe("admin index.html shell structure", () => {
     assert.ok(html.includes('id="modal-root"'), "#modal-root element not found");
   });
 
-  test("contains #sidebar nav element", () => {
+  test("contains #sidebar element", () => {
     assert.ok(html.includes('id="sidebar"'), "#sidebar element not found");
   });
 
-  test("contains #view-container section", () => {
+  test("contains #view-container element", () => {
     assert.ok(html.includes('id="view-container"'), "#view-container element not found");
   });
 
-  test("contains #command-bar header", () => {
+  test("contains #command-bar element", () => {
     assert.ok(html.includes('id="command-bar"'), "#command-bar element not found");
   });
 
@@ -70,5 +70,29 @@ describe("admin index.html shell structure", () => {
       html.includes('/v1/internal/model/nothing/assets/admin.js'),
       "JS path does not use correct admin base route"
     );
+  });
+
+  test("includes Tailwind CDN script", () => {
+    assert.ok(html.includes("cdn.tailwindcss.com"), "Tailwind CDN not found");
+  });
+
+  test("includes Space Grotesk font", () => {
+    assert.ok(html.includes("Space+Grotesk"), "Space Grotesk font not found");
+  });
+
+  test("includes Plus Jakarta Sans font", () => {
+    assert.ok(html.includes("Plus+Jakarta+Sans"), "Plus Jakarta Sans font not found");
+  });
+
+  test("includes Material Symbols Outlined", () => {
+    assert.ok(html.includes("Material+Symbols+Outlined"), "Material Symbols not found");
+  });
+
+  test("includes tailwind-config script", () => {
+    assert.ok(html.includes('id="tailwind-config"'), "tailwind-config not found");
+  });
+
+  test("has dark class on html element", () => {
+    assert.ok(html.includes('class="dark"'), "dark class not found on html");
   });
 });

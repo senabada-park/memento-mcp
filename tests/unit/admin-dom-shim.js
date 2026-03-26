@@ -36,6 +36,7 @@ class MiniElement {
     this.disabled    = false;
     this.selected    = false;
     this.parentNode  = null;
+    this.href        = "";
   }
 
   get classList() {
@@ -95,19 +96,23 @@ function setupGlobals() {
     createTextNode: (t) => t,
     getElementById: () => null,
     addEventListener: () => {},
-    querySelectorAll: () => []
+    querySelectorAll: () => [],
+    querySelector: () => null
   };
   globalThis.sessionStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
   globalThis.fetch = () => Promise.resolve({ ok: false, status: 0, headers: { get: () => "" } });
   globalThis.Node = MiniElement;
+  try {
+    globalThis.navigator = { clipboard: { writeText: () => Promise.resolve() } };
+  } catch {
+    /* navigator is a getter-only in some Node versions; safely ignore */
+  }
 }
 
 /**
  * admin.js를 로드하여 테스트용 exports를 반환.
- * Node.js CJS require()의 module.exports 재할당 참조 문제를 우회하기 위해
- * Function 생성자로 직접 평가.
- * 대상 파일은 프로젝트 소유 assets/admin/admin.js (고정 경로)이며
- * 외부/사용자 입력은 관여하지 않음.
+ * Function 생성자 사용: 프로젝트 소유 assets/admin/admin.js (고정 경로)만
+ * 대상이며, 외부/사용자 입력은 관여하지 않음.
  */
 function loadAdminModule() {
   setupGlobals();
@@ -117,8 +122,8 @@ function loadAdminModule() {
   const myExports = {};
   const myModule  = { exports: myExports };
 
-  /* eslint-disable-next-line no-new-func -- test-only: loading browser script in Node */
-  const wrapper = new Function("module", "exports", "require", code);
+  // eslint-disable-next-line no-new-func -- test-only: loading browser script in Node, no user input involved
+  const wrapper = new Function("module", "exports", "require", code);  // SAFE: fixed project file only
   wrapper(myModule, myExports, (id) => {
     throw new Error("require() not supported in admin.js test: " + id);
   });

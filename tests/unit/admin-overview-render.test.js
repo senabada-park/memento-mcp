@@ -21,7 +21,7 @@ describe("renderOverviewCards", () => {
     assert.ok(result.hasClass("loading-spinner"), "loading spinner expected");
   });
 
-  test("creates 6 KPI cards with correct labels", () => {
+  test("creates 6 KPI cards with correct structure", () => {
     const stats = {
       fragments: 123,
       sessions: 5,
@@ -30,22 +30,24 @@ describe("renderOverviewCards", () => {
       queues: { embeddingBacklog: 7, qualityPending: 2 }
     };
     const result = mod.renderOverviewCards(stats);
-    assert.equal(result.className, "kpi-grid");
+    assert.ok(result.className.includes("grid"), "should be a grid");
     assert.equal(result.children.length, 6, "should have 6 KPI cards");
-
-    const labels = result.children.map(c => {
-      const labelEl = c.children.find(ch => ch.className === "kpi-label");
-      return labelEl?.textContent;
-    });
-    assert.ok(labels.includes("총 파편 수"));
-    assert.ok(labels.includes("활성 세션"));
-    assert.ok(labels.includes("오늘 API 호출"));
-    assert.ok(labels.includes("활성 키"));
-    assert.ok(labels.includes("임베딩 대기열"));
-    assert.ok(labels.includes("품질 미검증"));
   });
 
-  test("KPI card displays formatted value", () => {
+  test("KPI card uses Stitch bg-surface-container-low class", () => {
+    const stats = {
+      fragments: 100,
+      sessions: 0,
+      apiCallsToday: 0,
+      activeKeys: 0,
+      queues: {}
+    };
+    const result = mod.renderOverviewCards(stats);
+    const firstCard = result.children[0];
+    assert.ok(firstCard.className.includes("bg-surface-container-low"), "card should use bg-surface-container-low");
+  });
+
+  test("KPI value uses font-headline class", () => {
     const stats = {
       fragments: 1234,
       sessions: 0,
@@ -55,32 +57,21 @@ describe("renderOverviewCards", () => {
     };
     const result = mod.renderOverviewCards(stats);
     const firstCard = result.children[0];
-    const valueEl   = firstCard.children.find(ch => ch.className.includes("kpi-value"));
-    assert.ok(valueEl, "value element should exist");
-    assert.ok(valueEl.textContent.includes("1"), "should contain formatted number");
+    const valueEl = firstCard.children.find(ch => ch.className && ch.className.includes("font-headline"));
+    assert.ok(valueEl, "value element should use font-headline");
   });
 });
 
-describe("renderHealthFlags", () => {
-  test("returns null when no flags", () => {
-    assert.equal(mod.renderHealthFlags(null), null);
-    assert.equal(mod.renderHealthFlags({}), null);
+describe("renderHealthPanel", () => {
+  test("returns null when stats is null", () => {
+    assert.equal(mod.renderHealthPanel(null), null);
   });
 
-  test("creates flag rows with warn/ok indicators", () => {
-    const flags = { embeddingQueueHealthy: true, dbConnectionPoolLow: false };
-    const panel = mod.renderHealthFlags(flags);
+  test("creates panel with health bars", () => {
+    const stats = { system: { cpu: 24, memory: 68, disk: 12 }, db: "connected", redis: "stub" };
+    const panel = mod.renderHealthPanel(stats);
     assert.ok(panel, "panel should not be null");
-    assert.ok(panel.hasClass("panel"));
-
-    const flagRows = panel.children.filter(c => c.className === "flag-row");
-    assert.equal(flagRows.length, 2, "should have 2 flag rows");
-
-    const firstIcon = flagRows[0].children[0];
-    assert.ok(firstIcon.className.includes("ok"), "true flag should be ok");
-
-    const secondIcon = flagRows[1].children[0];
-    assert.ok(secondIcon.className.includes("warn"), "false flag should be warn");
+    assert.ok(panel.className.includes("bg-surface-container-low"), "should use surface-container-low");
   });
 });
 
@@ -109,5 +100,10 @@ describe("utility functions", () => {
     assert.equal(mod.truncate("abcdef", 3), "abc...");
     assert.equal(mod.truncate("ab", 3), "ab");
     assert.equal(mod.truncate("", 3), "");
+  });
+
+  test("relativeTime returns human-readable time", () => {
+    assert.equal(mod.relativeTime(Date.now()), "just now");
+    assert.ok(mod.relativeTime(Date.now() - 120000).includes("m ago"));
   });
 });

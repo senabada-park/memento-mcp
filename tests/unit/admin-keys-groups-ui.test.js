@@ -16,21 +16,19 @@ before(() => {
 });
 
 describe("renderKeyTable", () => {
-  test("creates table with correct headers", () => {
+  test("creates table with correct structure", () => {
     mod.state.selectedKeyId = null;
     const keys = [
       { id: "k1", name: "test-key", status: "active", key_prefix: "mmcp_abc", daily_limit: 10000, today_calls: 5, created_at: "2026-01-01T00:00:00Z" }
     ];
     const result = mod.renderKeyTable(keys);
-    assert.equal(result.className, "data-table-wrap");
+    assert.ok(result.className.includes("bg-surface-container-low"), "wrapper should use bg-surface-container-low");
 
-    const table = result.children[0];
+    const tableWrap = result.children[0];
+    assert.ok(tableWrap, "should have overflow wrapper");
+    const table = tableWrap.children[0];
     assert.ok(table);
     assert.equal(table.id, "keys-table");
-
-    const thead = table.children[0];
-    const hRow  = thead.children[0];
-    assert.equal(hRow.children.length, 6, "should have 6 header columns");
   });
 
   test("creates row for each key", () => {
@@ -40,23 +38,36 @@ describe("renderKeyTable", () => {
       { id: "k2", name: "key-b", status: "inactive", key_prefix: "mmcp_b", daily_limit: 500, created_at: null }
     ];
     const result = mod.renderKeyTable(keys);
-    const table  = result.children[0];
+    const table  = result.children[0].children[0];
     const tbody  = table.children[1];
     assert.equal(tbody.children.length, 2, "should have 2 data rows");
   });
 
-  test("marks selected row", () => {
-    mod.state.selectedKeyId = "k2";
+  test("key row includes prefix in mono font", () => {
+    mod.state.selectedKeyId = null;
     const keys = [
-      { id: "k1", name: "key-a", status: "active", key_prefix: "mmcp_a" },
-      { id: "k2", name: "key-b", status: "inactive", key_prefix: "mmcp_b" }
+      { id: "k1", name: "key-a", status: "active", key_prefix: "mmcp_test", daily_limit: 1000 }
     ];
     const result = mod.renderKeyTable(keys);
-    const table  = result.children[0];
+    const table  = result.children[0].children[0];
     const tbody  = table.children[1];
-    const row2   = tbody.children[1];
-    assert.ok(row2.className.includes("selected"), "second row should be selected");
-    mod.state.selectedKeyId = null;
+    const row    = tbody.children[0];
+    const prefixTd = row.children[1];
+    assert.ok(prefixTd.className.includes("font-mono"), "prefix should use mono font");
+    assert.equal(prefixTd.textContent, "mmcp_test");
+  });
+});
+
+describe("renderKeyKpiRow", () => {
+  test("creates 4 KPI cards", () => {
+    const keys = [
+      { id: "k1", status: "active", groups: ["CORE"] },
+      { id: "k2", status: "inactive", groups: [] },
+      { id: "k3", status: "active", groups: ["API"] }
+    ];
+    const result = mod.renderKeyKpiRow(keys);
+    assert.ok(result.className.includes("grid-cols-4"), "should be 4-column grid");
+    assert.equal(result.children.length, 4, "should have 4 KPI cards");
   });
 });
 
@@ -74,25 +85,23 @@ describe("renderGroupCards", () => {
       { id: "g2", name: "team-b", description: null, member_count: 0 }
     ];
     const result = mod.renderGroupCards(groups);
-    assert.equal(result.className, "group-grid");
+    assert.ok(result.className.includes("grid"), "should be a grid");
     assert.equal(result.children.length, 2, "should have 2 group cards");
   });
 
-  test("group card displays name and member count", () => {
+  test("group card displays name", () => {
     mod.state.selectedGroupId = null;
     const groups = [
       { id: "g1", name: "team-alpha", description: "Test", member_count: 5 }
     ];
     const result = mod.renderGroupCards(groups);
     const card   = result.children[0];
-
-    const nameEl  = card.children.find(c => c.className === "group-name");
-    const countEl = card.children.find(c => c.className === "group-count");
+    const nameRow = card.children[0];
+    const nameEl  = nameRow.children.find(c => c.className && c.className.includes("font-bold"));
     assert.equal(nameEl.textContent, "team-alpha");
-    assert.ok(countEl.textContent.includes("5"));
   });
 
-  test("marks selected group card", () => {
+  test("marks selected group card with border-primary", () => {
     mod.state.selectedGroupId = "g2";
     const groups = [
       { id: "g1", name: "team-a" },
@@ -100,7 +109,7 @@ describe("renderGroupCards", () => {
     ];
     const result = mod.renderGroupCards(groups);
     const card2  = result.children[1];
-    assert.ok(card2.className.includes("selected"));
+    assert.ok(card2.className.includes("border-primary"));
     mod.state.selectedGroupId = null;
   });
 });

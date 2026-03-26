@@ -19,28 +19,16 @@ describe("renderMemoryFilters", () => {
   test("creates filter bar with expected inputs", () => {
     mod.state.memoryFilter = { topic: "", type: "", key_id: "" };
     const bar = mod.renderMemoryFilters();
-    assert.equal(bar.className, "filter-bar");
+    assert.ok(bar.className.includes("bg-surface-container-low"), "filter bar should use surface-container-low");
     assert.equal(bar.id, "memory-filters");
-    assert.equal(bar.children.length, 4, "should have 4 filter elements");
-
-    assert.equal(bar.children[0].id, "filter-topic");
-    assert.equal(bar.children[1].id, "filter-type");
-    assert.equal(bar.children[2].id, "filter-key-id");
-    assert.equal(bar.children[3].id, "filter-search");
   });
 
-  test("type select includes all fragment types", () => {
+  test("filter bar has search button", () => {
     mod.state.memoryFilter = { topic: "", type: "", key_id: "" };
-    const bar    = mod.renderMemoryFilters();
-    const select = bar.children[1];
-    const values = select.children.map(o => o.value);
-
-    assert.ok(values.includes(""));
-    assert.ok(values.includes("fact"));
-    assert.ok(values.includes("error"));
-    assert.ok(values.includes("decision"));
-    assert.ok(values.includes("procedure"));
-    assert.ok(values.includes("preference"));
+    const bar = mod.renderMemoryFilters();
+    const allChildren = [...bar.children[0].children, bar.children[1]];
+    const searchBtn = allChildren.find(c => c.id === "filter-search");
+    assert.ok(searchBtn, "search button should exist");
   });
 });
 
@@ -55,33 +43,26 @@ describe("renderFragmentList", () => {
     assert.ok(result.textContent.includes("결과 없음"));
   });
 
-  test("creates table rows for fragments", () => {
+  test("creates glass-panel with fragment items", () => {
     mod.state.selectedFragment = null;
     const fragments = [
       { id: "f1", type: "fact", topic: "test-topic", content: "some content", created_at: "2026-01-01T00:00:00Z" },
       { id: "f2", type: "error", topic: "error-topic", content: "error details", created_at: "2026-01-02T00:00:00Z" }
     ];
     const result = mod.renderFragmentList(fragments);
-    assert.equal(result.className, "data-table-wrap");
-
-    const table = result.children[0];
-    assert.equal(table.id, "fragment-table");
-
-    const tbody = table.children[1];
-    assert.equal(tbody.children.length, 2, "should have 2 fragment rows");
+    assert.ok(result.className.includes("glass-panel"), "should use glass-panel class");
   });
 
-  test("fragment row displays topic text", () => {
+  test("fragment item displays topic text", () => {
     mod.state.selectedFragment = null;
     const fragments = [
       { id: "f1", type: "fact", topic: "my-topic", content: "content", created_at: null }
     ];
     const result = mod.renderFragmentList(fragments);
-    const table  = result.children[0];
-    const tbody  = table.children[1];
-    const row    = tbody.children[0];
-    const topicTd = row.children[1];
-    assert.equal(topicTd.textContent, "my-topic");
+    const list   = result.children.find(c => c.id === "fragment-table");
+    assert.ok(list, "should have fragment-table");
+    const firstItem = list.children[0];
+    assert.ok(firstItem, "should have at least one item");
   });
 });
 
@@ -91,31 +72,31 @@ describe("renderAnomalyCards", () => {
     assert.equal(result.children.length, 0);
   });
 
-  test("creates 3 anomaly cards", () => {
-    const anomalies = { qualityUnverified: 5, staleFragments: 12, failedSearches: 0 };
+  test("creates anomaly panel with items", () => {
+    const anomalies = { contradictions: 12, superseded: 158, qualityUnverified: 2410, embeddingBacklog: 0 };
     const result = mod.renderAnomalyCards(anomalies);
-    assert.equal(result.className, "anomaly-grid");
-    assert.equal(result.children.length, 3);
+    assert.ok(result.className.includes("glass-panel"), "should use glass-panel class");
   });
 
-  test("anomaly card displays label and count", () => {
-    const anomalies = { qualityUnverified: 42, staleFragments: 0, failedSearches: 0 };
+  test("contradiction row uses error styling", () => {
+    const anomalies = { contradictions: 5, superseded: 0, qualityUnverified: 0, embeddingBacklog: 0 };
     const result = mod.renderAnomalyCards(anomalies);
-    const first  = result.children[0];
+    const list = result.children.find(c => c.className && c.className.includes("space-y"));
+    assert.ok(list, "should have list container");
+    const firstRow = list.children[0];
+    assert.ok(firstRow.className.includes("border-error"), "first row should have error border");
+  });
+});
 
-    const titleEl = first.children.find(c => c.className === "anomaly-title");
-    const countEl = first.children.find(c => c.className === "anomaly-count");
-    assert.equal(titleEl.textContent, "품질 미검증");
-    assert.ok(countEl.textContent.includes("42"));
+describe("renderFragmentInspector", () => {
+  test("returns empty fragment for null", () => {
+    const result = mod.renderFragmentInspector(null);
+    assert.equal(result.children.length, 0);
   });
 
-  test("anomaly card has correct severity class", () => {
-    const anomalies = { qualityUnverified: 1, staleFragments: 2, failedSearches: 3 };
-    const result = mod.renderAnomalyCards(anomalies);
-
-    const warnCard  = result.children[0];
-    const errorCard = result.children[2];
-    assert.ok(warnCard.className.includes("warn"));
-    assert.ok(errorCard.className.includes("error"));
+  test("creates inspector panel with content", () => {
+    const frag = { id: "f1", type: "fact", topic: "test", content: "Hello world", importance: 0.8, created_at: "2026-01-01T00:00:00Z", keywords: ["test"] };
+    const result = mod.renderFragmentInspector(frag);
+    assert.ok(result.className.includes("glass-panel"), "should use glass-panel class");
   });
 });

@@ -1,22 +1,72 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html class="dark" lang="ko">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Memento MCP Console</title>
+  <title>MEMENTO MCP | OPERATIONS CONSOLE</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "surface-container-highest": "#2f3445",
+            "surface-container-high": "#25293a",
+            "surface-container": "#1a1f2f",
+            "surface-container-low": "#161b2b",
+            "surface-container-lowest": "#090e1c",
+            "surface": "#0e1322",
+            "surface-dim": "#0e1322",
+            "surface-bright": "#343949",
+            "surface-variant": "#2f3445",
+            "on-surface": "#dee1f7",
+            "on-surface-variant": "#bbc9cf",
+            "on-background": "#dee1f7",
+            "background": "#0e1322",
+            "primary": "#a5e7ff",
+            "primary-container": "#00d2ff",
+            "primary-fixed": "#b6ebff",
+            "primary-fixed-dim": "#47d6ff",
+            "on-primary": "#003543",
+            "on-primary-container": "#00566a",
+            "on-primary-fixed": "#001f28",
+            "secondary": "#dcb8ff",
+            "secondary-container": "#7701d0",
+            "on-secondary": "#480081",
+            "tertiary": "#00fabf",
+            "tertiary-container": "#00dba7",
+            "on-tertiary": "#003828",
+            "error": "#ffb4ab",
+            "error-container": "#93000a",
+            "on-error": "#690005",
+            "outline": "#859399",
+            "outline-variant": "#3c494e",
+            "inverse-surface": "#dee1f7",
+          },
+          fontFamily: {
+            "headline": ["Space Grotesk"],
+            "body": ["Plus Jakarta Sans"],
+            "label": ["Space Grotesk"],
+            "mono": ["JetBrains Mono", "ui-monospace", "monospace"],
+          },
+          borderRadius: { DEFAULT: "0.125rem", lg: "0.25rem", xl: "0.5rem", full: "0.75rem" },
+        },
+      },
+    }
+  </script>
   <link rel="stylesheet" href="/v1/internal/model/nothing/assets/admin.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="bg-background text-on-surface font-body selection:bg-primary/30 min-h-screen">
   <div id="login-root"></div>
   <div id="app" style="display:none">
-    <nav id="sidebar"></nav>
-    <main id="main-content">
-      <header id="command-bar"></header>
-      <section id="view-container"></section>
-    </main>
+    <aside id="sidebar"></aside>
+    <header id="command-bar"></header>
+    <main id="view-container" class="ml-64 pt-16 p-8 min-h-screen"></main>
   </div>
-  <div id="toast-root"></div>
+  <div id="toast-root" class="fixed top-20 right-8 z-50 space-y-2"></div>
   <div id="modal-root"></div>
   <script src="/v1/internal/model/nothing/assets/admin.js"></script>
 </body>

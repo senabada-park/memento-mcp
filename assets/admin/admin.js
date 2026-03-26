@@ -2497,8 +2497,8 @@ async function renderMemory(container) {
       state.fragments   = fragRes.data;
       state.memoryPages = 1;
     } else {
-      state.fragments   = data.fragments ?? [];
-      state.memoryPages = data.pages ?? 1;
+      state.fragments   = data.items ?? data.fragments ?? [];
+      state.memoryPages = Math.ceil((data.total ?? 0) / (data.limit ?? 20)) || 1;
     }
   } else {
     state.fragments = [];

@@ -2460,18 +2460,78 @@ function renderFragmentInspector(fragment) {
 }
 
 function renderPagination() {
-  if (state.memoryPages <= 1) return document.createDocumentFragment();
+  const total   = state.memoryPages;
+  const current = state.memoryPage;
+  if (total <= 1) return document.createDocumentFragment();
 
   const wrap = document.createElement("div");
-  wrap.className = "flex gap-2 mt-4 justify-center";
+  wrap.className = "flex gap-1 mt-4 justify-center items-center";
 
-  for (let i = 1; i <= state.memoryPages; i++) {
+  const btnCls     = "p-1 hover:bg-white/5 rounded-sm px-3 text-xs text-slate-500";
+  const activeCls  = "p-1 rounded-sm px-3 text-xs text-white border border-primary/20 bg-white/5";
+  const arrowCls   = "p-1 hover:bg-white/5 rounded-sm text-slate-500";
+
+  function mkBtn(label, page, cls) {
     const btn = document.createElement("button");
-    btn.className = "p-1 hover:bg-white/5 rounded-sm px-3 text-xs " + (i === state.memoryPage ? "text-white border border-primary/20" : "text-slate-500");
-    btn.dataset.page = i;
-    btn.textContent = i;
-    wrap.appendChild(btn);
+    btn.className = cls;
+    btn.dataset.page = page;
+    btn.textContent = label;
+    if (page < 1 || page > total) {
+      btn.disabled = true;
+      btn.style.opacity = "0.3";
+      btn.style.cursor = "default";
+    }
+    return btn;
   }
+
+  function mkArrow(iconName, page) {
+    const btn = document.createElement("button");
+    btn.className = arrowCls;
+    btn.dataset.page = page;
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined text-sm";
+    icon.textContent = iconName;
+    btn.appendChild(icon);
+    if (page < 1 || page > total) { btn.disabled = true; btn.style.opacity = "0.3"; }
+    return btn;
+  }
+
+  wrap.appendChild(mkArrow("chevron_left", current - 1));
+
+  /* Window of 10 pages centered on current */
+  const windowSize = 10;
+  let start = Math.max(1, current - Math.floor(windowSize / 2));
+  let end   = start + windowSize - 1;
+  if (end > total) {
+    end   = total;
+    start = Math.max(1, end - windowSize + 1);
+  }
+
+  if (start > 1) {
+    wrap.appendChild(mkBtn("1", 1, btnCls));
+    if (start > 2) {
+      const dots = document.createElement("span");
+      dots.className = "text-xs text-slate-600 px-1";
+      dots.textContent = "...";
+      wrap.appendChild(dots);
+    }
+  }
+
+  for (let i = start; i <= end; i++) {
+    wrap.appendChild(mkBtn(String(i), i, i === current ? activeCls : btnCls));
+  }
+
+  if (end < total) {
+    if (end < total - 1) {
+      const dots = document.createElement("span");
+      dots.className = "text-xs text-slate-600 px-1";
+      dots.textContent = "...";
+      wrap.appendChild(dots);
+    }
+    wrap.appendChild(mkBtn(String(total), total, btnCls));
+  }
+
+  wrap.appendChild(mkArrow("chevron_right", current + 1));
 
   return wrap;
 }

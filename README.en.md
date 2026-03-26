@@ -247,7 +247,10 @@ OAuth 2.0 endpoints: `GET /.well-known/oauth-authorization-server`, `GET /.well-
 | Module | Responsibility |
 |--------|----------------|
 | `lib/admin/ApiKeyStore.js` | API key CRUD operations and authentication verification. SHA-256 hash-only storage; raw key returned once at creation. |
-| `lib/admin/admin-routes.js` | Admin REST endpoint handlers (stats, activity, keys, groups). Extracted from `server.js` for separation of concerns. |
+| `lib/admin/admin-routes.js` | Admin REST endpoint handlers (stats, activity, keys, groups, memory operations) and static asset serving. Extracted from `server.js` for separation of concerns. |
+| `assets/admin/index.html` | Admin SPA app shell (login form + container). |
+| `assets/admin/admin.css` | Admin UI stylesheet. |
+| `assets/admin/admin.js` | Admin UI logic with 6 navigation areas: Overview, API Keys, Groups, Memory Operations, Sessions (scaffold), Logs (scaffold). |
 
 Supporting infrastructure modules:
 
@@ -445,6 +448,21 @@ The `key_id` column provides an additional isolation layer orthogonal to the age
 
 This model enables per-key memory partitioning in multi-tenant or multi-agent deployments. API keys are provisioned and managed through the Admin SPA at `/v1/internal/model/nothing`. The SPA shell (HTML and images) is served without authentication to allow the login form to render; all data API endpoints under the same prefix require master key authentication via Authorization Bearer header or `?key=` query parameter. The raw key (`mmcp_<slug>_<32 hex chars>`) is returned exactly once on creation and is never stored; the database retains only the SHA-256 hash. Key status, daily rate limits, and usage statistics are tracked in the `api_keys` and `api_key_usage` tables created by migration-003.
 
+### Admin Console Architecture
+
+The Admin UI uses an app shell architecture (`assets/admin/index.html` + `admin.css` + `admin.js`). Six navigation areas:
+
+| Area | Description | Status |
+|------|-------------|--------|
+| Overview | KPI cards, system health, search layer analysis, recent activity | Implemented |
+| API Keys | Key list/creation/management, status changes, usage tracking | Implemented |
+| Groups | Key group management, member assignment | Implemented |
+| Memory Operations | Fragment search/filter, anomaly detection, search observability | Implemented |
+| Sessions | Session monitoring | Scaffold (pending) |
+| Logs | Log viewer | Scaffold (pending) |
+
+The `/stats` endpoint response now includes additional fields: `searchMetrics`, `observability`, `queues`, and `healthFlags`.
+
 ### API Key Groups
 
 Keys in the same group share the same fragment isolation scope. Use this when multiple agents (Claude Code, Codex, Gemini, etc.) need to share one project's memory.
@@ -463,6 +481,9 @@ Admin REST endpoints:
 | GET | `.../groups/:id/members` | List group members |
 | POST | `.../groups/:id/members` | Add key to group (`{ key_id }`) |
 | DELETE | `.../groups/:gid/members/:kid` | Remove key from group |
+| GET | `.../memory/fragments?topic=&type=&key_id=&page=&limit=` | Search/filter fragments (paginated) |
+| GET | `.../memory/anomalies` | Anomaly detection results |
+| GET | `.../assets/*` | Static asset serving (admin.css, admin.js). No authentication required. |
 
 ---
 
@@ -1463,14 +1484,23 @@ See **[INSTALL.en.md](INSTALL.en.md)** for full installation, migration, client 
 | `GET` | `/.well-known/oauth-protected-resource` | OAuth 2.0 protected resource metadata |
 | `GET` | `/authorize` | OAuth 2.0 authorization endpoint (PKCE required) |
 | `POST` | `/token` | OAuth 2.0 token endpoint (authorization code exchange) |
-| `GET` | `/v1/internal/model/nothing` | Admin SPA. Serves static HTML with login form (no authentication). Data API endpoints require master key. |
+| `GET` | `/v1/internal/model/nothing` | Admin SPA app shell (no authentication). Data API endpoints require master key. |
+| `GET` | `/v1/internal/model/nothing/assets/*` | Admin static files (admin.css, admin.js). No authentication required. |
 | `POST` | `/v1/internal/model/nothing/auth` | Master key verification endpoint |
-| `GET` | `/v1/internal/model/nothing/stats` | Dashboard statistics (fragment count, API call volume, system metrics) |
+| `GET` | `/v1/internal/model/nothing/stats` | Dashboard statistics (fragments, API calls, system metrics, searchMetrics, observability, queues, healthFlags) |
 | `GET` | `/v1/internal/model/nothing/activity` | Recent fragment activity log (last 10 entries) |
 | `GET` | `/v1/internal/model/nothing/keys` | List provisioned API keys |
 | `POST` | `/v1/internal/model/nothing/keys` | Create API key. Raw key returned once in response; only hash stored. |
 | `PUT` | `/v1/internal/model/nothing/keys/:id` | Update API key status (active ↔ inactive) |
 | `DELETE` | `/v1/internal/model/nothing/keys/:id` | Delete API key |
+| `GET` | `/v1/internal/model/nothing/groups` | List key groups |
+| `POST` | `/v1/internal/model/nothing/groups` | Create key group |
+| `DELETE` | `/v1/internal/model/nothing/groups/:id` | Delete key group |
+| `GET` | `/v1/internal/model/nothing/groups/:id/members` | List group members |
+| `POST` | `/v1/internal/model/nothing/groups/:id/members` | Add key to group |
+| `DELETE` | `/v1/internal/model/nothing/groups/:gid/members/:kid` | Remove key from group |
+| `GET` | `/v1/internal/model/nothing/memory/fragments` | Search/filter fragments (topic, type, key_id, page, limit) |
+| `GET` | `/v1/internal/model/nothing/memory/anomalies` | Anomaly detection results |
 
 ### /health Endpoint Policy
 

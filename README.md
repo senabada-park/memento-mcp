@@ -212,7 +212,12 @@ lib/
 
 lib/admin/
 ├── ApiKeyStore.js     API 키 CRUD, 그룹 CRUD, 인증 검증 (SHA-256 해시 저장, 원시 키 단 1회 반환)
-└── admin-routes.js    Admin REST API 라우트 + UI 서빙 (그룹 관리, 인증 게이트)
+└── admin-routes.js    Admin REST API 라우트 + 정적 파일 서빙 (그룹 관리, 메모리 운영, 인증 게이트)
+
+assets/admin/
+├── index.html         Admin SPA app shell (로그인 폼 + 컨테이너)
+├── admin.css          Admin UI 스타일시트
+└── admin.js           Admin UI 로직 (6개 내비게이션: 개요, API 키, 그룹, 메모리 운영, 세션, 로그)
 
 lib/http/
 └── helpers.js         HTTP SSE 스트림 헬퍼 및 요청 파싱 유틸리티
@@ -424,6 +429,21 @@ CREATE POLICY fragment_isolation_policy ON agent_memory.fragments
 
 Admin UI(`/v1/internal/model/nothing`)는 마스터 키 인증이 필요하다. Authorization Bearer 헤더 또는 `?key=` 쿼리 파라미터로 인증한다.
 
+### Admin 콘솔 구조
+
+Admin UI는 app shell 아키텍처로 구성된다 (`assets/admin/index.html` + `assets/admin/admin.css` + `assets/admin/admin.js`). 6개 내비게이션 영역으로 나뉜다:
+
+| 영역 | 설명 | 상태 |
+|------|------|------|
+| 개요 | KPI 카드, 시스템 헬스, 검색 레이어 분석, 최근 활동 | 구현 완료 |
+| API 키 | 키 목록/생성/관리, 상태 변경, 사용량 추적 | 구현 완료 |
+| 그룹 | 키 그룹 관리, 멤버 할당 | 구현 완료 |
+| 메모리 운영 | 파편 검색/필터, 이상 탐지, 검색 관측성 | 구현 완료 |
+| 세션 | 세션 모니터링 | 후속 구현 예정 |
+| 로그 | 로그 뷰어 | 후속 구현 예정 |
+
+`/stats` 응답에는 기본 통계 외에 `searchMetrics`, `observability`, `queues`, `healthFlags` 필드가 추가되었다.
+
 ### API 키 그룹
 
 같은 그룹에 속한 API 키들은 동일한 파편 격리 범위를 공유한다. 여러 에이전트(Claude Code, Codex, Gemini 등)가 하나의 프로젝트 기억을 공유할 때 사용한다.
@@ -442,6 +462,9 @@ Admin REST 엔드포인트:
 | GET | `.../groups/:id/members` | 그룹 소속 키 목록 |
 | POST | `.../groups/:id/members` | 키를 그룹에 추가 (`{ key_id }`) |
 | DELETE | `.../groups/:gid/members/:kid` | 키를 그룹에서 제거 |
+| GET | `.../memory/fragments?topic=&type=&key_id=&page=&limit=` | 파편 검색/필터링 (페이지네이션) |
+| GET | `.../memory/anomalies` | 이상 탐지 결과 조회 |
+| GET | `.../assets/*` | Admin 정적 파일 서빙 (admin.css, admin.js). 인증 불필요 |
 
 ---
 
@@ -1242,14 +1265,23 @@ EMBEDDING_DIMENSIONS=768
 | GET | /.well-known/oauth-protected-resource | OAuth 2.0 보호 리소스 메타데이터 |
 | GET | /authorize | OAuth 2.0 인가 엔드포인트. PKCE code_challenge 필요 |
 | POST | /token | OAuth 2.0 토큰 엔드포인트. authorization_code 교환 |
-| GET | /v1/internal/model/nothing | Admin SPA. 로그인 폼을 포함한 정적 HTML 제공(인증 불필요). 데이터 API는 마스터 키 인증 필요 |
+| GET | /v1/internal/model/nothing | Admin SPA. app shell HTML 제공(인증 불필요). 데이터 API는 마스터 키 인증 필요 |
+| GET | /v1/internal/model/nothing/assets/* | Admin 정적 파일 (admin.css, admin.js). 인증 불필요 |
 | POST | /v1/internal/model/nothing/auth | 마스터 키 검증 엔드포인트 |
-| GET | /v1/internal/model/nothing/stats | 대시보드 통계 (파편 수, API 호출량, 시스템 메트릭) |
+| GET | /v1/internal/model/nothing/stats | 대시보드 통계 (파편 수, API 호출량, 시스템 메트릭, searchMetrics, observability, queues, healthFlags) |
 | GET | /v1/internal/model/nothing/activity | 최근 파편 활동 로그 (10건) |
 | GET | /v1/internal/model/nothing/keys | API 키 목록 조회 |
 | POST | /v1/internal/model/nothing/keys | API 키 생성. 원시 키는 응답에서 단 1회 반환 |
 | PUT | /v1/internal/model/nothing/keys/:id | API 키 상태 변경 (active ↔ inactive) |
 | DELETE | /v1/internal/model/nothing/keys/:id | API 키 삭제 |
+| GET | /v1/internal/model/nothing/groups | 키 그룹 목록 |
+| POST | /v1/internal/model/nothing/groups | 키 그룹 생성 |
+| DELETE | /v1/internal/model/nothing/groups/:id | 키 그룹 삭제 |
+| GET | /v1/internal/model/nothing/groups/:id/members | 그룹 멤버 목록 |
+| POST | /v1/internal/model/nothing/groups/:id/members | 키를 그룹에 추가 |
+| DELETE | /v1/internal/model/nothing/groups/:gid/members/:kid | 그룹에서 키 제거 |
+| GET | /v1/internal/model/nothing/memory/fragments | 파편 검색/필터링 (topic, type, key_id, page, limit) |
+| GET | /v1/internal/model/nothing/memory/anomalies | 이상 탐지 결과 |
 
 ### /health 엔드포인트 정책
 

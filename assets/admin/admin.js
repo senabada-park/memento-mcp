@@ -350,7 +350,7 @@ function renderSidebar() {
     }
 
     if (n.scaffold) {
-      item.style.opacity = "0.4";
+      item.style.opacity = "0.6";
     }
 
     const icon = document.createElement("span");
@@ -363,11 +363,7 @@ function renderSidebar() {
     label.textContent = n.label;
     item.appendChild(label);
 
-    if (!n.scaffold) {
-      item.addEventListener("click", (e) => { e.preventDefault(); navigate(n.id); });
-    } else {
-      item.addEventListener("click", (e) => e.preventDefault());
-    }
+    item.addEventListener("click", (e) => { e.preventDefault(); navigate(n.id); });
     nav.appendChild(item);
   });
   el.appendChild(nav);
@@ -2053,10 +2049,25 @@ function loadingHtml() {
    ================================================================ */
 
 function init() {
+  const urlKey = new URLSearchParams(window.location.search).get("key");
+  if (urlKey && !state.masterKey) {
+    state.masterKey = urlKey;
+    sessionStorage.setItem("adminKey", urlKey);
+  }
+
   if (state.masterKey) {
-    document.getElementById("login-root")?.classList.add("hidden");
-    document.getElementById("app")?.classList.add("visible");
-    navigate("overview");
+    api("/auth", { method: "POST", body: { key: state.masterKey } })
+      .then(res => {
+        if (res.ok) {
+          document.getElementById("login-root")?.classList.add("hidden");
+          document.getElementById("app")?.classList.add("visible");
+          navigate("overview");
+        } else {
+          state.masterKey = "";
+          sessionStorage.removeItem("adminKey");
+          renderLogin();
+        }
+      });
   } else {
     renderLogin();
   }

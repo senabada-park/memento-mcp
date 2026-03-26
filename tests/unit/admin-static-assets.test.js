@@ -78,16 +78,7 @@ describe("handleAdminStatic", () => {
     handleAdminStatic(req, res);
   });
 
-  it("returns 401 without master key when ACCESS_KEY is set", { skip: !ACCESS_KEY }, (_, done) => {
-    const req = mockReq("/v1/internal/model/nothing/assets/admin.css");
-    const res = mockRes((r) => {
-      assert.strictEqual(r.statusCode, 401);
-      done();
-    });
-    handleAdminStatic(req, res);
-  });
-
-  it("returns 200 without master key when ACCESS_KEY is not set", { skip: !!ACCESS_KEY }, (_, done) => {
+  it("serves assets without auth (browser resource requests have no auth header)", (_, done) => {
     const req = mockReq("/v1/internal/model/nothing/assets/admin.css");
     const res = mockRes((r) => {
       assert.strictEqual(r.statusCode, 200);

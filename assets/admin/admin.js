@@ -82,18 +82,55 @@ function renderView() {
     case "keys":      renderKeys(container);      break;
     case "groups":    renderGroups(container);     break;
     case "memory":    renderMemory(container);     break;
-    case "sessions":  renderScaffold(container, "세션 관리"); break;
-    case "logs":      renderScaffold(container, "로그 뷰어"); break;
+    case "sessions":  renderScaffold(container, "sessions"); break;
+    case "logs":      renderScaffold(container, "logs"); break;
     default:          renderOverview(container);
   }
 }
 
-function renderScaffold(container, title) {
+function renderScaffold(container, viewId) {
   container.textContent = "";
-  const div = document.createElement("div");
-  div.className = "scaffold-msg";
-  div.textContent = title + " -- 준비 중";
-  container.appendChild(div);
+  const wrap = document.createElement("div");
+  wrap.className = "scaffold-view";
+
+  const scaffolds = {
+    sessions: {
+      title: "세션 관리",
+      note:  "API 연동 대기 -- 현재 세션 수는 개요에서 확인 가능",
+      sections: ["활성 세션 목록", "세션 상세", "만료된 세션 정리"]
+    },
+    logs: {
+      title: "시스템 로그",
+      note:  "API 연동 대기 -- Winston 로그 스트림 연동 예정",
+      sections: ["로그 레벨 필터", "로그 목록", "로그 상세"]
+    }
+  };
+
+  const cfg = scaffolds[viewId] ?? { title: viewId, note: "후속 구현 예정", sections: [] };
+
+  const h = document.createElement("h2");
+  h.textContent = cfg.title;
+  wrap.appendChild(h);
+
+  const note = document.createElement("p");
+  note.className = "scaffold-note";
+  note.textContent = cfg.note;
+  wrap.appendChild(note);
+
+  for (const label of cfg.sections) {
+    const sec = document.createElement("div");
+    sec.className = "scaffold-section";
+    const sh = document.createElement("h3");
+    sh.textContent = label;
+    sec.appendChild(sh);
+    const ph = document.createElement("div");
+    ph.className = "scaffold-placeholder";
+    ph.textContent = "-- " + label + " 영역 --";
+    sec.appendChild(ph);
+    wrap.appendChild(sec);
+  }
+
+  container.appendChild(wrap);
 }
 
 /* ================================================================

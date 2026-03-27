@@ -92,7 +92,21 @@ psql $DATABASE_URL -f lib/memory/migration-010-ema-activation.sql
 
 # API key groups (N:M mapping for cross-agent memory sharing)
 psql $DATABASE_URL -f lib/memory/migration-011-key-groups.sql
+
+# Quality verification column
+psql $DATABASE_URL -f lib/memory/migration-012-quality-verified.sql
+
+# Search events observability table
+psql $DATABASE_URL -f lib/memory/migration-013-search-events.sql
 ```
+
+Since v1.8.0, automatic migration is supported. Instead of running each file manually:
+
+```bash
+DATABASE_URL=postgresql://user:pass@host:port/dbname npm run migrate
+```
+
+Applied migrations are tracked in `agent_memory.schema_migrations`. Only unapplied files are executed in order.
 
 > **Upgrading from v1.1.0 or earlier**: If migration-006 is not applied, any operation that creates a `superseded_by` link — `amend`, `memory_consolidate`, and automatic relationship generation in GraphLinker — will fail with a DB constraint error. This migration is mandatory when upgrading an existing database.
 

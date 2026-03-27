@@ -79,7 +79,13 @@ CREATE EXTENSION IF NOT EXISTS vector;
 psql "$DATABASE_URL" -f lib/memory/memory-schema.sql
 ```
 
-기존 설치를 업그레이드하는 경우에는 [INSTALL.md](../../INSTALL.md)의 마이그레이션 순서를 따른다.
+기존 설치를 업그레이드하는 경우:
+
+```bash
+DATABASE_URL="$DATABASE_URL" npm run migrate
+```
+
+또는 수동으로 개별 마이그레이션을 실행하려면 [INSTALL.md](../INSTALL.md)를 참조한다.
 
 ## 6. 서버 실행
 

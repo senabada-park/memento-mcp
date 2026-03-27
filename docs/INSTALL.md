@@ -65,7 +65,16 @@ psql $DATABASE_URL -f lib/memory/migration-009-co-retrieved.sql  # co_retrieved 
 psql $DATABASE_URL -f lib/memory/migration-010-ema-activation.sql # EMA 활성화 컬럼 추가
 psql $DATABASE_URL -f lib/memory/migration-011-key-groups.sql      # API 키 그룹
 psql $DATABASE_URL -f lib/memory/migration-012-quality-verified.sql # quality_verified 컬럼 추가
+psql $DATABASE_URL -f lib/memory/migration-013-search-events.sql   # 검색 이벤트 관측성 테이블 추가
 ```
+
+v1.8.0부터 자동 마이그레이션을 지원한다. 위 수동 실행 대신:
+
+```bash
+DATABASE_URL=postgresql://user:pass@host:port/dbname npm run migrate
+```
+
+`agent_memory.schema_migrations` 테이블에 적용 이력이 기록되며, 미적용 파일만 순서대로 실행된다.
 
 > **v1.1.0 이전에서 업그레이드하는 경우**: migration-006 미실행 시 `amend`, `memory_consolidate`, GraphLinker 자동 관계 생성에서 DB 제약 에러가 발생한다(`superseded_by` INSERT 실패). 기존 DB를 유지하며 업그레이드할 때 반드시 실행해야 한다.
 

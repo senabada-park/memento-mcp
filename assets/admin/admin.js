@@ -2617,7 +2617,7 @@ async function renderGraph(container) {
   const svg   = document.createElementNS(svgNS, "svg");
   svg.id = "graph-canvas";
   svg.setAttribute("width", "100%");
-  svg.setAttribute("height", "500");
+  svg.setAttribute("height", "600");
   svg.style.backgroundColor = "#0e1322";
   canvasWrap.appendChild(svg);
 
@@ -2654,18 +2654,30 @@ async function loadGraph() {
 
   const width  = svg.node().clientWidth  || 800;
   const height = svg.node().clientHeight || 500;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
 
   const nodeIds = new Set(data.nodes.map(n => n.id));
   const links   = data.edges
     .filter(e => nodeIds.has(e.from_id) && nodeIds.has(e.to_id))
     .map(e => ({ source: e.from_id, target: e.to_id, type: e.relation_type, weight: e.weight }));
 
-  const sim = d3.forceSimulation(data.nodes)
-    .force("link",   d3.forceLink(links).id(d => d.id).distance(80))
-    .force("charge", d3.forceManyBody().strength(-200))
-    .force("center", d3.forceCenter(width / 2, height / 2));
+  /** zoom + pan 컨테이너 */
+  const g = svg.append("g");
+  svg.call(d3.zoom()
+    .scaleExtent([0.1, 5])
+    .on("zoom", (e) => g.attr("transform", e.transform))
+  );
 
-  const link = svg.append("g")
+  /** 노드 수 기반 반발력 조정 */
+  const chargeStrength = data.nodes.length > 80 ? -80 : data.nodes.length > 30 ? -150 : -200;
+
+  const sim = d3.forceSimulation(data.nodes)
+    .force("link",    d3.forceLink(links).id(d => d.id).distance(80))
+    .force("charge",  d3.forceManyBody().strength(chargeStrength))
+    .force("center",  d3.forceCenter(width / 2, height / 2))
+    .force("collide", d3.forceCollide().radius(d => 8 + (d.importance || 0.5) * 10));
+
+  const link = g.append("g")
     .selectAll("line")
     .data(links)
     .join("line")
@@ -2673,7 +2685,7 @@ async function loadGraph() {
     .attr("stroke-opacity", 0.6)
     .attr("stroke-width", d => Math.min(4, d.weight || 1));
 
-  const node = svg.append("g")
+  const node = g.append("g")
     .selectAll("circle")
     .data(data.nodes)
     .join("circle")
@@ -2681,6 +2693,7 @@ async function loadGraph() {
     .attr("fill", d => TYPE_COLORS[d.type] || "#6b7280")
     .attr("stroke", "#1a1a2e")
     .attr("stroke-width", 1.5)
+    .style("cursor", "grab")
     .call(d3.drag()
       .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
       .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
@@ -2689,7 +2702,7 @@ async function loadGraph() {
 
   node.append("title").text(d => `[${d.type}] ${d.label}`);
 
-  const labels = svg.append("g")
+  const labels = g.append("g")
     .selectAll("text")
     .data(data.nodes)
     .join("text")
@@ -2697,7 +2710,8 @@ async function loadGraph() {
     .attr("font-size", "10px")
     .attr("fill", "#9ca3af")
     .attr("dx", 12)
-    .attr("dy", 4);
+    .attr("dy", 4)
+    .style("pointer-events", "none");
 
   sim.on("tick", () => {
     link
@@ -2705,6 +2719,22 @@ async function loadGraph() {
       .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
     node.attr("cx", d => d.x).attr("cy", d => d.y);
     labels.attr("x", d => d.x).attr("y", d => d.y);
+  });
+
+  /** 초기 줌: simulation 안정 후 전체 노드가 보이도록 fit */
+  sim.on("end", () => {
+    const bounds = g.node().getBBox();
+    if (bounds.width === 0 || bounds.height === 0) return;
+    const pad    = 40;
+    const scale  = Math.min(
+      width  / (bounds.width  + pad * 2),
+      height / (bounds.height + pad * 2),
+      1.5
+    );
+    const tx = width  / 2 - (bounds.x + bounds.width  / 2) * scale;
+    const ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
+    svg.transition().duration(500)
+      .call(d3.zoom().transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
   });
 
   const statsEl = document.getElementById("graph-stats");

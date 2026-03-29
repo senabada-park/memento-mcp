@@ -63,10 +63,10 @@ describe("renderKeyTable", () => {
     assert.ok(wrap.className.includes("glass-panel"));
   });
 
-  test("7 columns in thead", () => {
+  test("8 columns in thead (including Fragments)", () => {
     const wrap = mod.renderKeyTable([]);
     const ths = flatQuery(wrap, "th");
-    assert.equal(ths.length, 7);
+    assert.equal(ths.length, 8);
   });
 
   test("footer에 entry count 표시", () => {

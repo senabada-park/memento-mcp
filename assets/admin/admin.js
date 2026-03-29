@@ -1088,7 +1088,7 @@ function renderKeyTable(keys) {
   const thead = document.createElement("thead");
   thead.className = "bg-white/5 border-b border-white/5";
   const hRow = document.createElement("tr");
-  ["Name", "Prefix", "Status", "Groups", "Created Date", "Usage (24h)", ""].forEach(h => {
+  ["Name", "Prefix", "Status", "Groups", "Created Date", "Usage (24h)", "Fragments", ""].forEach(h => {
     const th = document.createElement("th");
     th.className = "px-6 py-4 text-[10px] font-bold text-slate-400 tracking-widest uppercase font-label";
     th.textContent = h;
@@ -1184,6 +1184,30 @@ function renderKeyTable(keys) {
     td6.appendChild(usageWrap);
     tr.appendChild(td6);
 
+    /* Fragments quota */
+    const tdFrag = document.createElement("td");
+    tdFrag.className = "px-6 py-4";
+    const fragCount = k.fragment_count ?? 0;
+    const fragLimit = k.fragment_limit;
+    const fragSpan  = document.createElement("span");
+    fragSpan.className = "text-xs font-mono";
+    if (fragLimit == null) {
+      fragSpan.classList.add("text-slate-400");
+      fragSpan.textContent = fmt(fragCount) + " / Unlimited";
+    } else {
+      const ratio = fragLimit > 0 ? fragCount / fragLimit : 0;
+      if (ratio >= 1.0) {
+        fragSpan.classList.add("text-red-400");
+      } else if (ratio >= 0.8) {
+        fragSpan.classList.add("text-orange-400");
+      } else {
+        fragSpan.classList.add("text-on-surface");
+      }
+      fragSpan.textContent = fmt(fragCount) + " / " + fmt(fragLimit);
+    }
+    tdFrag.appendChild(fragSpan);
+    tr.appendChild(tdFrag);
+
     /* Actions: more_vert */
     const td7 = document.createElement("td");
     td7.className = "px-6 py-4";
@@ -1214,7 +1238,7 @@ function renderKeyTable(keys) {
   return wrap;
 }
 
-function renderKeyInspector(key) {
+function renderKeyInspector(key, container) {
   const panel = document.createElement("aside");
   panel.className = "w-96 bg-surface-container-high border-l border-white/5 flex flex-col p-6 gap-6 relative overflow-y-auto";
   panel.id = "key-inspector";
@@ -1280,9 +1304,17 @@ function renderKeyInspector(key) {
   /* Stats */
   const statsDiv = document.createElement("div");
   statsDiv.className = "mt-4 space-y-2";
+
+  const inspFragCount = key.fragment_count ?? 0;
+  const inspFragLimit = key.fragment_limit;
+  const fragDisplayVal = inspFragLimit != null
+    ? fmt(inspFragCount) + " / " + fmt(inspFragLimit)
+    : fmt(inspFragCount) + " / Unlimited";
+
   [
     { label: "Total Usage",  value: fmt(key.today_calls ?? 0) + " req" },
-    { label: "Last Active",  value: fmtDate(key.created_at) }
+    { label: "Last Active",  value: fmtDate(key.created_at) },
+    { label: "Fragments",    value: fragDisplayVal, fragQuota: true }
   ].forEach(f => {
     const row = document.createElement("div");
     row.className = "flex justify-between items-center";
@@ -1290,10 +1322,45 @@ function renderKeyInspector(key) {
     lbl.className = "text-xs text-slate-400";
     lbl.textContent = f.label;
     row.appendChild(lbl);
+    const valWrap = document.createElement("div");
+    valWrap.className = "flex items-center gap-2";
     const val = document.createElement("span");
     val.className = "text-xs font-mono text-on-surface";
+    if (f.fragQuota && inspFragLimit != null) {
+      const ratio = inspFragLimit > 0 ? inspFragCount / inspFragLimit : 0;
+      if (ratio >= 1.0) val.classList.add("text-red-400");
+      else if (ratio >= 0.8) val.classList.add("text-orange-400");
+    }
     val.textContent = f.value;
-    row.appendChild(val);
+    valWrap.appendChild(val);
+    if (f.fragQuota) {
+      const changeBtn = document.createElement("button");
+      changeBtn.className = "text-[9px] text-primary font-bold uppercase hover:underline";
+      changeBtn.textContent = "Change Limit";
+      changeBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const current = inspFragLimit != null ? String(inspFragLimit) : "";
+        const input   = prompt("New fragment limit (leave empty for unlimited):", current);
+        if (input === null) return;
+        const newLimit = input.trim() === "" ? null : parseInt(input.trim());
+        if (newLimit !== null && (isNaN(newLimit) || newLimit < 0)) {
+          showToast("Invalid limit value", "warning");
+          return;
+        }
+        const res = await api("/keys/" + key.id + "/fragment-limit", {
+          method: "PUT",
+          body: { fragment_limit: newLimit }
+        });
+        if (res.ok) {
+          showToast("Fragment limit updated", "success");
+          renderKeys(container);
+        } else {
+          showToast(res.data?.error ?? "Update failed", "error");
+        }
+      });
+      valWrap.appendChild(changeBtn);
+    }
+    row.appendChild(valWrap);
     statsDiv.appendChild(row);
   });
   idCard.appendChild(statsDiv);
@@ -1433,7 +1500,7 @@ async function renderKeys(container) {
   split.style.minHeight = "400px";
 
   split.appendChild(renderKeyTable(state.keys));
-  split.appendChild(renderKeyInspector(selectedKey));
+  split.appendChild(renderKeyInspector(selectedKey, container));
   container.appendChild(split);
 
   /* Event: table row click */
@@ -1475,12 +1542,34 @@ async function renderKeys(container) {
     g2.appendChild(limitInput);
     form.appendChild(g2);
 
+    const g3 = document.createElement("div");
+    g3.className = "form-group";
+    const l3 = document.createElement("label");
+    l3.className = "form-label";
+    l3.textContent = "FRAGMENT LIMIT";
+    g3.appendChild(l3);
+    const fragLimitInput = document.createElement("input");
+    fragLimitInput.className = "form-input";
+    fragLimitInput.id = "modal-key-frag-limit";
+    fragLimitInput.type = "number";
+    fragLimitInput.placeholder = "5000";
+    g3.appendChild(fragLimitInput);
+    const fragHint = document.createElement("p");
+    fragHint.className = "text-[10px] text-slate-500 mt-1";
+    fragHint.textContent = "Leave empty for unlimited";
+    g3.appendChild(fragHint);
+    form.appendChild(g3);
+
     showModal("Generate New API Credential", form, [
       { id: "create", label: "GENERATE AND VIEW SECRET", cls: "btn-primary", handler: async () => {
         const name        = document.getElementById("modal-key-name")?.value.trim();
         const daily_limit = parseInt(document.getElementById("modal-key-limit")?.value) || 10000;
+        const fragLimitRaw = document.getElementById("modal-key-frag-limit")?.value.trim();
+        const fragment_limit = fragLimitRaw ? parseInt(fragLimitRaw) : null;
         if (!name) { showToast("Name required", "warning"); return; }
-        const res = await api("/keys", { method: "POST", body: { name, daily_limit } });
+        const body = { name, daily_limit };
+        if (fragment_limit != null) body.fragment_limit = fragment_limit;
+        const res = await api("/keys", { method: "POST", body });
         closeModal();
         if (res.ok && res.data?.raw_key) {
           const keyDisplay = document.createElement("div");

@@ -25,6 +25,7 @@
 | COMPRESS_AGE_DAYS | 30 | 기억 압축 대상 비활성 일수 |
 | COMPRESS_MIN_GROUP | 3 | 압축 그룹 최소 크기. 이 수 미만이면 압축하지 않는다 |
 | RERANKER_ENABLED | false | cross-encoder reranking 활성화. true 시 recall 결과를 cross-encoder로 재순위화 |
+| FRAGMENT_DEFAULT_LIMIT | 5000 | 새 API 키 생성 시 기본 파편 할당량 (기본: 5000, NULL=무제한) |
 
 ### PostgreSQL
 

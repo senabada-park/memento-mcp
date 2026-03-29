@@ -45,6 +45,9 @@ importance < 0.3이면 경고 반환 + TTL short 자동 설정.
 
 반환: `{ id, keywords, ttl_tier, scope, conflicts }`
 
+에러 케이스:
+- `fragment_limit_exceeded`: API 키의 파편 할당량 초과. 사용자에게 forget으로 불필요한 파편 정리, 관리 콘솔에서 할당량 상향, memory_consolidate로 중복 파편 정리를 안내한다.
+
 사용 시점:
 - 사용자가 선호/스타일을 명시할 때 (type=preference, importance=0.9)
 - 에러 원인이 파악됐을 때 (type=error, importance=0.8)

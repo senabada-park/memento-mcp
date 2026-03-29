@@ -20,6 +20,7 @@
 | CONSOLIDATE_INTERVAL_MS | 21600000 | Auto-maintenance (consolidate) interval (ms). Default 6 hours |
 | EVALUATOR_MAX_QUEUE | 100 | MemoryEvaluator queue size cap (older jobs dropped on overflow) |
 | OAUTH_ALLOWED_REDIRECT_URIS | (none) | OAuth redirect_uri allowed prefixes (comma-separated, only localhost allowed when unset) |
+| FRAGMENT_DEFAULT_LIMIT | 5000 | Default fragment quota for new API keys (default: 5000, NULL=unlimited) |
 
 ### PostgreSQL
 

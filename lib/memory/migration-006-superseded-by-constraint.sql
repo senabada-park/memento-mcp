@@ -13,5 +13,5 @@ ALTER TABLE agent_memory.fragment_links
 ADD CONSTRAINT fragment_links_relation_type_check
 CHECK (relation_type = ANY (ARRAY[
     'related', 'caused_by', 'resolved_by',
-    'part_of', 'contradicts', 'superseded_by'
+    'part_of', 'contradicts', 'superseded_by', 'co_retrieved'
 ]));

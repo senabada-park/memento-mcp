@@ -156,7 +156,7 @@ lib/cli/
 scripts/
 ├── backfill-embeddings.js                       임베딩 소급 처리 (1회성)
 ├── normalize-vectors.js                         벡터 L2 정규화 (1회성)
-├── migrate.js                                   DB 마이그레이션 러너 (schema_migrations 기반 증분 적용)
+├── migrate.js                                   DB 마이그레이션 러너 (schema_migrations 기반 증분 적용, .env 자동 로드, pgvector 스키마 자동 감지)
 ├── migration-007-flexible-embedding-dims.js     임베딩 차원 마이그레이션
 └── cleanup-noise.js                             저품질/노이즈 파편 일괄 정리 (1회성)
 ```

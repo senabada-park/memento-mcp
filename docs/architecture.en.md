@@ -134,7 +134,7 @@ One-time utility scripts are in `scripts/`.
 scripts/
 +-- backfill-embeddings.js                       Embedding backfill (one-time)
 +-- normalize-vectors.js                         Vector L2 normalization (one-time)
-+-- migrate.js                                   DB migration runner (schema_migrations-based incremental)
++-- migrate.js                                   DB migration runner (schema_migrations-based incremental, .env auto-load, pgvector schema auto-detection)
 +-- migration-007-flexible-embedding-dims.js     Embedding dimension migration
 +-- cleanup-noise.js                             Bulk cleanup of low-quality/noise fragments (one-time)
 ```

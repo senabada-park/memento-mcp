@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.2.1] - 2026-03-31
+
+### Fixed
+- migrate.js: pgvector 스키마 자동 감지 및 search_path 설정 추가. `nerdvana.vector_cosine_ops` 하드코딩 제거하여 표준 환경(public 스키마) 호환 복구
+- migrate.js: dotenv로 .env 자동 로드. `POSTGRES_*` 변수로 `DATABASE_URL` 자동 구성하여 수동 지정 불필요
+
+### Documentation
+- README 한/영: 간소화된 업데이트 절차 추가 (`git pull → npm install → npm run migrate`)
+- .env.example: `PGVECTOR_SCHEMA` 자동 감지 설명 강화
+
 ## [2.2.0] - 2026-03-31
 
 ### Added

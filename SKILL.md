@@ -16,7 +16,7 @@ Memento MCP는 MCP(Model Context Protocol) 기반의 장기 기억 서버다. AI
 - 키 격리: API 키별로 파편이 분리되어 다른 키의 기억에 접근 불가. 키 그룹으로 공유 가능.
 - 스코프: permanent(기본, 장기 기억)와 session(세션 워킹 메모리, 세션 종료 시 소멸) 2종.
 
-## 도구 레퍼런스 (12개)
+## 도구 레퍼런스 (13개)
 
 ### remember
 

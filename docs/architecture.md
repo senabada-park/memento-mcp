@@ -20,7 +20,7 @@ server.js  (HTTP 서버)
     └── GET  /.well-known/oauth-protected-resource
     │
     ├── lib/jsonrpc.js        JSON-RPC 2.0 파싱 및 메서드 디스패치
-    ├── lib/tool-registry.js  12개 기억 도구 등록 및 라우팅
+    ├── lib/tool-registry.js  13개 기억 도구 등록 및 라우팅
     │
     └── lib/memory/
             ├── MemoryManager.js          비즈니스 로직 파사드 (싱글턴)
@@ -113,7 +113,7 @@ lib/logging/
 
 ```
 lib/tools/
-├── memory.js    12개 MCP 도구 핸들러
+├── memory.js    13개 MCP 도구 핸들러
 ├── memory-schemas.js  도구 스키마 정의 (inputSchema)
 ├── db.js        PostgreSQL 연결 풀, RLS 적용 쿼리 헬퍼 (MCP 미노출)
 ├── db-tools.js  MCP DB 도구 핸들러 (db.js에서 분리된 도구별 로직)

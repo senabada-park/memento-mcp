@@ -20,7 +20,7 @@ server.js  (HTTP server)
     +-- GET  /.well-known/oauth-protected-resource
     |
     +-- lib/jsonrpc.js        JSON-RPC 2.0 parsing and method dispatch
-    +-- lib/tool-registry.js  12 memory tool registration and routing
+    +-- lib/tool-registry.js  13 memory tool registration and routing
     |
     +-- lib/memory/
             +-- MemoryManager.js          Business logic facade (singleton)

@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS agent_memory.fragments (
     content       TEXT NOT NULL,
     topic         TEXT NOT NULL,
     keywords      TEXT[] NOT NULL DEFAULT '{}',
-    type          TEXT NOT NULL CHECK (type IN ('fact','decision','error','preference','procedure','relation')),
+    type          TEXT NOT NULL CHECK (type IN ('fact','decision','error','preference','procedure','relation','episode')),
     importance    REAL NOT NULL DEFAULT 0.5 CHECK (importance >= 0 AND importance <= 1),
     content_hash  TEXT NOT NULL,
     source        TEXT,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS agent_memory.fragments (
     access_count  INTEGER DEFAULT 0,
     accessed_at   TIMESTAMPTZ,
     created_at    TIMESTAMPTZ DEFAULT NOW(),
-    ttl_tier         TEXT DEFAULT 'warm' CHECK (ttl_tier IN ('hot','warm','cold','permanent')),
+    ttl_tier         TEXT DEFAULT 'warm' CHECK (ttl_tier IN ('short','hot','warm','cold','permanent')),
     estimated_tokens INTEGER DEFAULT 0,
     utility_score    REAL DEFAULT 1.0,
     verified_at      TIMESTAMPTZ DEFAULT NOW(),
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS agent_memory.fragment_links (
     id            BIGSERIAL PRIMARY KEY,
     from_id       TEXT NOT NULL REFERENCES agent_memory.fragments(id) ON DELETE CASCADE,
     to_id         TEXT NOT NULL REFERENCES agent_memory.fragments(id) ON DELETE CASCADE,
-    relation_type TEXT DEFAULT 'related' CHECK (relation_type IN ('related','caused_by','resolved_by','part_of','contradicts','superseded_by')),
+    relation_type TEXT DEFAULT 'related' CHECK (relation_type IN ('related','caused_by','resolved_by','part_of','contradicts','superseded_by','co_retrieved')),
     created_at    TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(from_id, to_id)
 );

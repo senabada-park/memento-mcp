@@ -26,7 +26,10 @@ const state = {
   selectedGroupId:   null,
   selectedSessionId: null,
 
-  memoryFilter: { topic: "", type: "", key_id: "" },
+  keyFilterGroup:  "",
+  keyFilterStatus: "",
+
+  memoryFilter: { topic: "", type: "", key_id: "", group_id: "" },
   memoryPage:   1,
   memoryPages:  1,
   fragments:    [],
@@ -1364,6 +1367,31 @@ function renderKeyInspector(key, container) {
     statsDiv.appendChild(row);
   });
   idCard.appendChild(statsDiv);
+
+  /* Daily Limit — editable */
+  const dailyRow = document.createElement("div");
+  dailyRow.className = "flex justify-between items-center mt-2";
+  const dailyLabel = document.createElement("span");
+  dailyLabel.className = "text-[10px] font-bold text-slate-500 uppercase tracking-wider";
+  dailyLabel.textContent = "DAILY RATE LIMIT";
+  dailyRow.appendChild(dailyLabel);
+  const dailyVal = document.createElement("input");
+  dailyVal.type = "number";
+  dailyVal.min = "1";
+  dailyVal.max = "99999";
+  dailyVal.step = "1000";
+  dailyVal.value = String(key.daily_limit ?? 10000);
+  dailyVal.className = "w-24 bg-transparent border border-outline-variant/30 rounded-sm px-2 py-1 text-right text-sm font-mono text-on-surface focus:border-primary focus:outline-none";
+  dailyVal.addEventListener("change", async () => {
+    const val = parseInt(dailyVal.value);
+    if (!val || val < 1) { showToast("1 이상 입력", "warning"); dailyVal.value = key.daily_limit; return; }
+    const r = await api("/keys/" + key.id + "/daily-limit", { method: "PUT", body: { daily_limit: val } });
+    if (r.ok) { showToast("Daily limit updated", "success"); key.daily_limit = val; }
+    else showToast(r.data?.error ?? "Update failed", "error");
+  });
+  dailyRow.appendChild(dailyVal);
+  idCard.appendChild(dailyRow);
+
   panel.appendChild(idCard);
 
   /* Assigned Groups */
@@ -1384,14 +1412,60 @@ function renderKeyInspector(key, container) {
       const rmIcon = document.createElement("span");
       rmIcon.className = "material-symbols-outlined text-[12px] text-slate-500 cursor-pointer hover:text-error";
       rmIcon.textContent = "close";
+      const gId = typeof g === "string" ? g : g.id;
+      rmIcon.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await api("/groups/" + gId + "/members/" + key.id, { method: "DELETE" });
+        showToast("Removed from group", "success");
+        renderKeys(container);
+      });
       chip.appendChild(rmIcon);
       groupChips.appendChild(chip);
     });
   }
 
   const addGroupBtn = document.createElement("button");
-  addGroupBtn.className = "px-2 py-0.5 border border-dashed border-white/10 text-[10px] text-slate-500 uppercase";
+  addGroupBtn.className = "px-2 py-0.5 border border-dashed border-white/10 text-[10px] text-slate-500 uppercase hover:border-primary hover:text-primary transition-colors cursor-pointer";
   addGroupBtn.textContent = "ADD GROUP";
+  addGroupBtn.addEventListener("click", () => {
+    const form = document.createElement("div");
+    const g1 = document.createElement("div");
+    g1.className = "form-group";
+    const l1 = document.createElement("label");
+    l1.className = "form-label";
+    l1.textContent = "SELECT GROUP";
+    g1.appendChild(l1);
+    const sel = document.createElement("select");
+    sel.className = "form-select";
+    sel.id = "modal-assign-group";
+    const existingGroupIds = new Set((key.groups ?? []).map(g => typeof g === "string" ? g : g.id));
+    const available = (state.groups ?? []).filter(g => !existingGroupIds.has(g.id));
+    if (!available.length) {
+      const opt = document.createElement("option");
+      opt.textContent = "(no available groups)";
+      opt.disabled = true;
+      sel.appendChild(opt);
+    }
+    available.forEach(g => {
+      const opt = document.createElement("option");
+      opt.value = g.id;
+      opt.textContent = g.name;
+      sel.appendChild(opt);
+    });
+    g1.appendChild(sel);
+    form.appendChild(g1);
+
+    showModal("Assign to Group", form, [
+      { id: "assign", label: "ASSIGN", cls: "btn-primary", handler: async () => {
+        const groupId = document.getElementById("modal-assign-group")?.value;
+        if (!groupId) return;
+        await api("/groups/" + groupId + "/members", { method: "POST", body: { key_id: key.id } });
+        closeModal();
+        showToast("Assigned to group", "success");
+        renderKeys(container);
+      }}
+    ]);
+  });
   groupChips.appendChild(addGroupBtn);
   groupsSection.appendChild(groupChips);
   panel.appendChild(groupsSection);
@@ -1414,8 +1488,14 @@ function renderKeyInspector(key, container) {
     name.textContent = g.name;
     row.appendChild(name);
     const assignBtn = document.createElement("button");
-    assignBtn.className = "text-[9px] text-primary font-bold uppercase";
+    assignBtn.className = "text-[9px] text-primary font-bold uppercase cursor-pointer hover:text-primary/80";
     assignBtn.textContent = "ASSIGN";
+    assignBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await api("/groups/" + g.id + "/members", { method: "POST", body: { key_id: key.id } });
+      showToast("Assigned to " + g.name, "success");
+      renderKeys(container);
+    });
     row.appendChild(assignBtn);
     dirList.appendChild(row);
   });
@@ -1459,8 +1539,9 @@ async function renderKeys(container) {
   container.textContent = "";
   container.appendChild(loadingHtml());
 
-  const res = await api("/keys");
-  if (res.ok) state.keys = res.data ?? [];
+  const [res, gRes] = await Promise.all([api("/keys"), api("/groups")]);
+  if (res.ok) state.keys   = res.data ?? [];
+  if (gRes.ok) state.groups = gRes.data ?? [];
 
   const selectedKey = state.keys.find(k => k.id === state.selectedKeyId) ?? null;
 
@@ -1494,12 +1575,82 @@ async function renderKeys(container) {
   /* KPI Row */
   container.appendChild(renderKeyKpiRow(state.keys));
 
+  /* Filter Bar */
+  const filterBar = document.createElement("div");
+  filterBar.className = "glass-panel p-2 rounded-sm flex items-center gap-4 mb-6";
+
+  const groupChip = document.createElement("div");
+  groupChip.className = "px-3 py-1 bg-surface-variant text-[10px] font-bold flex items-center gap-2 rounded-sm text-primary";
+  const groupSelect = document.createElement("select");
+  groupSelect.id = "key-filter-group";
+  groupSelect.className = "bg-transparent border-none outline-none text-[10px] font-bold text-slate-400 cursor-pointer";
+  const groupOptAll = document.createElement("option");
+  groupOptAll.value = "";
+  groupOptAll.textContent = "GROUP: ALL";
+  groupSelect.appendChild(groupOptAll);
+  const groupOptNone = document.createElement("option");
+  groupOptNone.value = "__none__";
+  groupOptNone.textContent = "GROUP: UNASSIGNED";
+  if (state.keyFilterGroup === "__none__") groupOptNone.selected = true;
+  groupSelect.appendChild(groupOptNone);
+  const seenGroups = new Map();
+  state.keys.forEach(k => (k.groups ?? []).forEach(g => {
+    const gid  = typeof g === "string" ? g : g.id;
+    const gname = typeof g === "string" ? g : g.name;
+    if (!seenGroups.has(gid)) seenGroups.set(gid, gname);
+  }));
+  for (const [gid, gname] of seenGroups) {
+    const opt = document.createElement("option");
+    opt.value = gid;
+    opt.textContent = "GROUP: " + (gname ?? gid).toUpperCase();
+    if (state.keyFilterGroup === gid) opt.selected = true;
+    groupSelect.appendChild(opt);
+  }
+  groupChip.appendChild(groupSelect);
+  filterBar.appendChild(groupChip);
+
+  const statusChip = document.createElement("div");
+  statusChip.className = "px-3 py-1 bg-surface-variant text-[10px] font-bold flex items-center gap-2 rounded-sm text-primary";
+  const statusSelect = document.createElement("select");
+  statusSelect.id = "key-filter-status";
+  statusSelect.className = "bg-transparent border-none outline-none text-[10px] font-bold text-slate-400 cursor-pointer";
+  ["", "active", "inactive"].forEach(v => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v ? "STATUS: " + v.toUpperCase() : "STATUS: ALL";
+    if (state.keyFilterStatus === v) opt.selected = true;
+    statusSelect.appendChild(opt);
+  });
+  statusChip.appendChild(statusSelect);
+  filterBar.appendChild(statusChip);
+
+  const countLabel = document.createElement("span");
+  countLabel.className = "ml-auto text-[10px] text-slate-500 font-mono";
+  countLabel.id = "key-filter-count";
+  filterBar.appendChild(countLabel);
+
+  container.appendChild(filterBar);
+
+  /* Apply filters */
+  let filteredKeys = state.keys;
+  if (state.keyFilterStatus) {
+    filteredKeys = filteredKeys.filter(k => k.status === state.keyFilterStatus);
+  }
+  if (state.keyFilterGroup === "__none__") {
+    filteredKeys = filteredKeys.filter(k => !k.groups?.length);
+  } else if (state.keyFilterGroup) {
+    filteredKeys = filteredKeys.filter(k =>
+      (k.groups ?? []).some(g => (typeof g === "string" ? g : g.id) === state.keyFilterGroup)
+    );
+  }
+  countLabel.textContent = filteredKeys.length + " / " + state.keys.length;
+
   /* Split layout */
   const split = document.createElement("div");
   split.className = "flex gap-0";
   split.style.minHeight = "400px";
 
-  split.appendChild(renderKeyTable(state.keys));
+  split.appendChild(renderKeyTable(filteredKeys));
   split.appendChild(renderKeyInspector(selectedKey, container));
   container.appendChild(split);
 
@@ -1538,6 +1689,9 @@ async function renderKeys(container) {
     limitInput.className = "form-input";
     limitInput.id = "modal-key-limit";
     limitInput.type = "number";
+    limitInput.min = "1";
+    limitInput.max = "99999";
+    limitInput.step = "1000";
     limitInput.value = "10000";
     g2.appendChild(limitInput);
     form.appendChild(g2);
@@ -1552,6 +1706,9 @@ async function renderKeys(container) {
     fragLimitInput.className = "form-input";
     fragLimitInput.id = "modal-key-frag-limit";
     fragLimitInput.type = "number";
+    fragLimitInput.min = "0";
+    fragLimitInput.max = "99999";
+    fragLimitInput.step = "1000";
     fragLimitInput.placeholder = "5000";
     g3.appendChild(fragLimitInput);
     const fragHint = document.createElement("p");
@@ -1641,6 +1798,16 @@ async function renderKeys(container) {
         ]);
       }
     });
+  });
+
+  /* Event: filter selects */
+  document.getElementById("key-filter-group")?.addEventListener("change", (e) => {
+    state.keyFilterGroup = e.target.value;
+    renderKeys(container);
+  });
+  document.getElementById("key-filter-status")?.addEventListener("change", (e) => {
+    state.keyFilterStatus = e.target.value;
+    renderKeys(container);
   });
 }
 
@@ -2651,8 +2818,9 @@ async function renderGraph(container) {
   limitRange.type = "range";
   limitRange.id = "graph-limit";
   limitRange.min = "10";
-  limitRange.max = "200";
+  limitRange.max = "10000";
   limitRange.value = "50";
+  limitRange.step = "10";
   limitRange.className = "w-32 accent-primary";
 
   const limitValue = document.createElement("span");
@@ -2679,7 +2847,8 @@ async function renderGraph(container) {
   /* Legend */
   const TYPE_COLORS = {
     fact: "#5b8ef0", decision: "#8b5cf6", error: "#ef4444",
-    procedure: "#22c55e", preference: "#f59e0b", relation: "#6b7280"
+    procedure: "#22c55e", preference: "#f59e0b", relation: "#6b7280",
+    episode: "#ec4899"
   };
   const legend = document.createElement("div");
   legend.className = "flex items-center gap-3 ml-auto";
@@ -2734,7 +2903,8 @@ async function loadGraph() {
 
   const TYPE_COLORS = {
     fact: "#5b8ef0", decision: "#8b5cf6", error: "#ef4444",
-    procedure: "#22c55e", preference: "#f59e0b", relation: "#6b7280"
+    procedure: "#22c55e", preference: "#f59e0b", relation: "#6b7280",
+    episode: "#ec4899"
   };
 
   const svg = d3.select("#graph-canvas");
@@ -2779,8 +2949,8 @@ async function loadGraph() {
     .join("circle")
     .attr("r", d => 4 + (d.importance || 0.5) * 10)
     .attr("fill", d => TYPE_COLORS[d.type] || "#6b7280")
-    .attr("stroke", "#1a1a2e")
-    .attr("stroke-width", 1.5)
+    .attr("stroke", d => d.type === "episode" ? "#ec4899" : "#1a1a2e")
+    .attr("stroke-width", d => d.type === "episode" ? 3 : 1.5)
     .style("cursor", "grab")
     .call(d3.drag()
       .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
@@ -2788,7 +2958,11 @@ async function loadGraph() {
       .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
     );
 
-  node.append("title").text(d => `[${d.type}] ${d.label}`);
+  node.append("title").text(d =>
+    d.type === "episode"
+      ? `[episode] ${d.label}\nSession: ${d.session_id ?? "-"}\nContext: ${(d.context_summary ?? "").slice(0, 80)}`
+      : `[${d.type}] ${d.label}`
+  );
 
   const labels = g.append("g")
     .selectAll("text")
@@ -3332,6 +3506,30 @@ function renderMemoryFilters() {
   keyChip.appendChild(keyExpand);
   leftChips.appendChild(keyChip);
 
+  /* Group chip */
+  const groupChip = document.createElement("div");
+  groupChip.className = "px-3 py-1 bg-surface-variant text-[10px] font-bold flex items-center gap-2 rounded-sm text-slate-400";
+  const groupSelect = document.createElement("select");
+  groupSelect.id = "filter-group";
+  groupSelect.className = "bg-transparent border-none outline-none text-[10px] font-bold text-slate-400 cursor-pointer";
+  const gOptAll = document.createElement("option");
+  gOptAll.value = "";
+  gOptAll.textContent = "GROUP: ALL";
+  groupSelect.appendChild(gOptAll);
+  (state.groups ?? []).forEach(g => {
+    const opt = document.createElement("option");
+    opt.value = g.id;
+    opt.textContent = "GROUP: " + g.name.toUpperCase();
+    if (state.memoryFilter.group_id === g.id) opt.selected = true;
+    groupSelect.appendChild(opt);
+  });
+  groupChip.appendChild(groupSelect);
+  const groupExpand = document.createElement("span");
+  groupExpand.className = "material-symbols-outlined text-[14px]";
+  groupExpand.textContent = "expand_more";
+  groupChip.appendChild(groupExpand);
+  leftChips.appendChild(groupChip);
+
   bar.appendChild(leftChips);
 
   /* Right side */
@@ -3836,15 +4034,18 @@ async function renderMemory(container) {
   container.appendChild(loadingHtml());
 
   const params = new URLSearchParams();
-  if (state.memoryFilter.topic)  params.set("topic", state.memoryFilter.topic);
-  if (state.memoryFilter.type)   params.set("type", state.memoryFilter.type);
-  if (state.memoryFilter.key_id) params.set("key_id", state.memoryFilter.key_id);
+  if (state.memoryFilter.topic)    params.set("topic",    state.memoryFilter.topic);
+  if (state.memoryFilter.type)     params.set("type",     state.memoryFilter.type);
+  if (state.memoryFilter.key_id)   params.set("key_id",   state.memoryFilter.key_id);
+  if (state.memoryFilter.group_id) params.set("group_id", state.memoryFilter.group_id);
   params.set("page", state.memoryPage);
 
-  const [fragRes, anomalyRes] = await Promise.all([
+  const [fragRes, anomalyRes, groupsRes] = await Promise.all([
     api("/memory/fragments?" + params),
-    api("/memory/anomalies")
+    api("/memory/anomalies"),
+    api("/groups")
   ]);
+  if (groupsRes.ok) state.groups = groupsRes.data ?? [];
 
   if (fragRes.ok) {
     const data = fragRes.data ?? {};
@@ -3897,9 +4098,10 @@ async function renderMemory(container) {
 
   /* Event: search */
   document.getElementById("filter-search")?.addEventListener("click", () => {
-    state.memoryFilter.topic  = document.getElementById("filter-topic")?.value ?? "";
-    state.memoryFilter.type   = document.getElementById("filter-type")?.value ?? "";
-    state.memoryFilter.key_id = document.getElementById("filter-key-id")?.value ?? "";
+    state.memoryFilter.topic    = document.getElementById("filter-topic")?.value ?? "";
+    state.memoryFilter.type     = document.getElementById("filter-type")?.value ?? "";
+    state.memoryFilter.key_id   = document.getElementById("filter-key-id")?.value ?? "";
+    state.memoryFilter.group_id = document.getElementById("filter-group")?.value ?? "";
     state.memoryPage = 1;
     renderMemory(container);
   });

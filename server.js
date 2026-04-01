@@ -52,6 +52,7 @@ import {
   handleOAuthResourceMetadata,
   handleOAuthAuthorize,
   handleOAuthToken,
+  handleOAuthRegister,
   handleAdminUi,
   handleAdminImage,
   handleAdminStatic,
@@ -138,13 +139,18 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/authorize") {
+  if ((req.method === "GET" || req.method === "POST") && url.pathname === "/authorize") {
     await handleOAuthAuthorize(req, res);
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/token") {
     await handleOAuthToken(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/register") {
+    await handleOAuthRegister(req, res);
     return;
   }
 

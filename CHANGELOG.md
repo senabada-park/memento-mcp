@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.3.0] - 2026-04-02
+
+### Added
+- OAuth MCP compliance: RFC 7591 Dynamic Client Registration, auto-approve for trusted origins, consent screen
+- API key usable as OAuth client_id for Claude.ai/ChatGPT Web Integration
+- Trusted origin-based redirect_uri validation (claude.ai, chatgpt.com, platform.openai.com, copilot.microsoft.com, gemini.google.com)
+- WWW-Authenticate header with resource_metadata on 401 responses
+- Admin UI: daily-limit inline edit, permissions toggle, fragment_limit edit, group/status filters
+- Knowledge graph: episode type (pink + glow), limit slider up to 10,000
+- get_skill_guide tool: returns SKILL.md optimization guide (full or by section)
+- Auto-update: check_update/apply_update tools, `memento update` CLI
+- Session auto-recovery with keyId/groupKeyIds preservation
+- Keyword rules in aiInstructions: project name + hostname
+- migration-021-oauth-clients.sql, OAuthClientStore.js
+- DEFAULT_DAILY_LIMIT, DEFAULT_PERMISSIONS, DEFAULT_FRAGMENT_LIMIT env vars
+- OAUTH_TRUSTED_ORIGINS env var for origin-based redirect validation
+
+### Fixed
+- Session TTL default 60min -> 240min
+- Redis TTL sync: dynamic remaining time instead of fixed CACHE_SESSION_TTL
+- SSE disconnect: preserve session (clear SSE response only)
+- OAuth refresh_token: propagate is_api_key flag
+- updateTtlTier: key_id isolation to prevent cross-key TTL modification
+- Default API key permissions: read-only -> read+write
+- Admin login: form POST + 302 redirect (SameSite=Lax)
+- Static asset cache: Cloudflare CDN cache busting with timestamp query string
+- recall schema: episode added to type enum
+- memory-schema.sql CHECK constraints: episode, co_retrieved, short
+
+### Documentation
+- 13 docs synced: configuration, api-reference, INSTALL, architecture, admin-console-guide, internals, README (ko/en)
+- SKILL.md rewritten: search decision tree, episode guide, multi-platform, token budget
+- CHANGELOG.md synced with v2.3.0
+
 ## [2.2.1] - 2026-03-31
 
 ### Fixed

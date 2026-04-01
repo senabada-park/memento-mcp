@@ -11,7 +11,7 @@
 | PORT | 57332 | HTTP listen port |
 | MEMENTO_ACCESS_KEY | (none) | Bearer authentication key. Authentication disabled when unset |
 | SESSION_TTL_MINUTES | 240 | Session TTL (minutes) |
-| LOG_DIR | /var/log/mcp | Winston log file directory |
+| LOG_DIR | ./logs | Winston log file directory |
 | ALLOWED_ORIGINS | (none) | Allowed Origins list. Comma-separated. All origins allowed when unset |
 | RATE_LIMIT_WINDOW_MS | 60000 | Rate limiting window size (ms) |
 | RATE_LIMIT_MAX_REQUESTS | 120 | Max requests per IP per window |

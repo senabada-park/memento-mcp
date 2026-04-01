@@ -11,15 +11,19 @@
 | PORT | 57332 | HTTP 리슨 포트 |
 | MEMENTO_ACCESS_KEY | (없음) | Bearer 인증 키. 미설정 시 인증 비활성화 |
 | SESSION_TTL_MINUTES | 240 | 세션 유효 시간 (분) |
-| LOG_DIR | /var/log/mcp | Winston 로그 파일 저장 디렉토리 |
+| LOG_DIR | ./logs | Winston 로그 파일 저장 디렉토리 |
 | ALLOWED_ORIGINS | (없음) | 허용할 Origin 목록. 쉼표로 구분. 미설정 시 전체 허용 |
 | RATE_LIMIT_WINDOW_MS | 60000 | Rate limiting 윈도우 크기 (ms) |
 | RATE_LIMIT_MAX_REQUESTS | 120 | 윈도우 내 IP당 최대 요청 수 |
 | RATE_LIMIT_PER_IP | 30 | IP당 분당 요청 한도 (미인증 요청) |
 | RATE_LIMIT_PER_KEY | 100 | API 키당 분당 요청 한도 (인증된 요청) |
-| CONSOLIDATE_INTERVAL_MS | 3600000 | 자동 유지보수(consolidate) 실행 간격 (ms). 기본 1시간 |
+| CONSOLIDATE_INTERVAL_MS | 21600000 | 자동 유지보수(consolidate) 실행 간격 (ms). 기본 6시간 |
 | EVALUATOR_MAX_QUEUE | 100 | MemoryEvaluator 큐 크기 상한 (초과 시 오래된 작업 드롭) |
-| OAUTH_ALLOWED_REDIRECT_URIS | (없음) | OAuth redirect_uri 허용 prefix (쉼표 구분). 환경변수 미설정 시 아래 3개 URI가 기본 허용: `https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/aip/g/oauth/callback`, `https://platform.openai.com/oauth/callback` |
+| OAUTH_TRUSTED_ORIGINS | (없음) | OAuth redirect_uri 신뢰 도메인 (쉼표 구분, origin 단위). 기본값: `claude.ai, chatgpt.com, platform.openai.com, copilot.microsoft.com, gemini.google.com` |
+| OAUTH_ALLOWED_REDIRECT_URIS | (없음) | OAuth redirect_uri 정확 일치 허용 목록 (쉼표 구분). OAUTH_TRUSTED_ORIGINS와 별도로 동작 |
+| DEFAULT_DAILY_LIMIT | 10000 | API 키 생성 시 기본 일일 호출 한도 |
+| DEFAULT_PERMISSIONS | read,write | API 키 생성 시 기본 권한 |
+| DEFAULT_FRAGMENT_LIMIT | (없음) | API 키 생성 시 기본 파편 할당량. 미설정 시 무제한 |
 | DEDUP_BATCH_SIZE | 100 | 시맨틱 중복 제거 배치 크기 |
 | DEDUP_MIN_FRAGMENTS | 5 | dedup 최소 파편 수. 이 수 미만이면 중복 제거를 건너뛴다 |
 | COMPRESS_AGE_DAYS | 30 | 기억 압축 대상 비활성 일수 |

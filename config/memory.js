@@ -40,8 +40,9 @@ export const MEMORY_CONFIG = {
   },
   /** Reciprocal Rank Fusion 검색 설정 */
   rrfSearch: {
-    k             : 60,   // RRF 상수 (높을수록 상위 랭크 부스트 감소)
-    l1WeightFactor: 2.0   // L1(Redis) 결과 가중치 배수
+    k                : 60,    // RRF 상수 (높을수록 상위 랭크 부스트 감소)
+    l1WeightFactor   : 2.0,   // L1(Redis) 결과 가중치 배수
+    graphWeightFactor: 1.5    // L2.5 그래프 이웃 가중치 배수
   },
   /** 임베딩 비동기 워커 설정 */
   embeddingWorker: {
@@ -86,7 +87,7 @@ export const MEMORY_CONFIG = {
   },
   /** 시맨틱 검색 설정 */
   semanticSearch: {
-    minSimilarity: 0.2,
+    minSimilarity: 0.35,
     limit        : 10
   },
   /** 파편 GC 정책 */

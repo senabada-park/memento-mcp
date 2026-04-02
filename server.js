@@ -39,6 +39,9 @@ import { recordHttpRequest } from "./lib/metrics.js";
 /** 스케줄러 */
 import { startSchedulers } from "./lib/scheduler.js";
 
+/** Reranker 사전 로드 */
+import { preloadReranker } from "./lib/memory/Reranker.js";
+
 /** HTTP 핸들러 */
 import {
   handleHealth,
@@ -222,6 +225,9 @@ server.listen(PORT, () => {
   startSchedulers({ globalEmbeddingWorkerRef: embeddingWorkerRef });
   setWorkerRefs({ embeddingWorkerRef });
   globalEmbeddingWorker = embeddingWorkerRef.current;
+
+  /** Reranker 사전 로드 (비차단 — 실패해도 서버 시작 중단 없음) */
+  preloadReranker().catch(() => {});
 });
 
 /**

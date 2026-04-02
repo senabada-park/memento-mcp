@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.4.0] - 2026-04-02
+
+### Fixed
+- workspace isolation: L1 HotCache bypass — `_executeSearch`에 RRF merge 후 workspace post-filter 추가 (cache miss fragments는 workspace 필드 미보장)
+- workspace isolation: `FragmentReader.getByIds` SELECT에 workspace 컬럼 누락으로 모든 반환 파편의 workspace가 `undefined` → NULL 취급되는 버그 수정
+- workspace isolation: `_searchL2` L1-miss 경로의 `getByIds` 결과에 workspace 후처리 필터 미적용 수정
+- `recall` 응답 직렬화에 workspace 필드 누락 수정 (fragments 항목에 `workspace` 필드 추가)
+
+### Changed
+- Session TTL default 240min → 43200min (30일 슬라이딩 윈도우)
+- Reranker: external 서비스 연속 3회 실패 시 in-process 모드 자동 전환
+- TemporalLinker: API 키 격리 (keyId 기반 `key_id = ANY($n)` 필터), 링크 생성 `Promise.all` 병렬화
+- server.js: 시작 시 `preloadReranker()` 비차단 호출 (fire-and-forget)
+
 ## [2.3.0] - 2026-04-02
 
 ### Added

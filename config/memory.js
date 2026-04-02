@@ -88,7 +88,7 @@ export const MEMORY_CONFIG = {
   /** 시맨틱 검색 설정 */
   semanticSearch: {
     minSimilarity: 0.35,
-    limit        : 10
+    limit        : 30
   },
   /** 파편 GC 정책 */
   gc: {

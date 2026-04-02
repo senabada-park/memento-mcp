@@ -49,7 +49,9 @@ server.js  (HTTP 서버)
             ├── SearchEventRecorder.js    FragmentSearch.search() 결과 to search_events 테이블 기록
             ├── UtilityBaseline.js        파편 utility baseline 계산 (중복 제거/압축 판단 기준선)
             ├── LinkedFragmentLoader.js   연결 파편 일괄 로드 (1-hop 이웃 배치 조회)
-            ├── GraphNeighborSearch.js    L2.5 그래프 이웃 검색 (fragment_links 1-hop, RRF 1.5x 가중)
+            ├── GraphNeighborSearch.js    L2.5 그래프 이웃 검색 (fragment_links 1-hop 양방향 UNION, tanh 포화 스코어링 + 관계 유형별 부스트)
+            ├── TemporalLinker.js         시간 기반 자동 링크 (동일 topic ±24h, weight=max(0.3, 1-hours/24), 최대 5건)
+            ├── Reranker.js               Cross-Encoder 재정렬 (RERANKER_URL 설정 시 외부 HTTP, 미설정 시 ONNX in-process ms-marco-MiniLM-L-6-v2)
             ├── EvaluationMetrics.js      tool_feedback 기반 implicit Precision@5 및 downstream task 성공률 계산
             ├── MorphemeIndex.js          형태소 기반 L3 폴백 인덱스
             ├── memory-schema.sql         PostgreSQL 스키마 정의
@@ -73,7 +75,10 @@ server.js  (HTTP 서버)
             ├── migration-018-fragment-quota.sql   api_keys.fragment_limit 컬럼 (파편 할당량)
             ├── migration-019-hnsw-tuning.sql      HNSW ef_construction 64→128
             ├── migration-020-search-layer-latency.sql search_events 레이어별 레이턴시 컬럼
-            └── migration-021-oauth-clients.sql        OAuth 클라이언트 등록 테이블 (oauth_clients, client_id/secret/redirect_uris)
+            ├── migration-021-oauth-clients.sql        OAuth 클라이언트 등록 테이블 (oauth_clients, client_id/secret/redirect_uris)
+            ├── migration-022-temporal-link-type.sql   fragment_links CHECK 제약에 temporal 추가
+            ├── migration-023-link-weight-float.sql    fragment_links.weight integer→real (TemporalLinker float 가중치 지원)
+            └── migration-024-workspace.sql            fragments.workspace + api_keys.default_workspace 컬럼, 인덱스 2개
 ```
 
 지원 모듈:
@@ -199,6 +204,7 @@ erDiagram
         boolean quality_verified "MemoryEvaluator 판정: NULL=미평가, TRUE=keep, FALSE=downgrade/discard"
         text context_summary "기억이 생긴 맥락/배경 요약 (episode에서 주로 사용)"
         text session_id "파편이 생성된 세션 ID"
+        text workspace "워크스페이스 격리 (NULL=전역)"
     }
     fragment_links {
         bigserial id PK
@@ -256,8 +262,9 @@ erDiagram
 | quality_verified | BOOLEAN | DEFAULT NULL | MemoryEvaluator 품질 판정 결과. NULL=미평가, TRUE=keep(검증됨), FALSE=downgrade/discard(부정). permanent 승격 Circuit Breaker에 사용됨 |
 | context_summary | TEXT | | 기억이 생긴 맥락/배경 요약 (episode에서 주로 사용) |
 | session_id | TEXT | | 파편이 생성된 세션 ID |
+| workspace | TEXT | | 워크스페이스 격리 레이블. NULL이면 전역 파편(모든 workspace 검색에서 노출). 값이 있으면 해당 workspace + 전역 파편만 함께 반환됨 |
 
-인덱스 목록: content_hash(UNIQUE), topic(B-tree), type(B-tree), keywords(GIN), importance DESC(B-tree), created_at DESC(B-tree), agent_id(B-tree), linked_to(GIN), (ttl_tier, created_at)(B-tree), source(B-tree), verified_at(B-tree), is_anchor WHERE TRUE(부분 인덱스), valid_from(B-tree), (topic, type) WHERE valid_to IS NULL(부분 인덱스), id WHERE valid_to IS NULL(부분 UNIQUE).
+인덱스 목록: content_hash(UNIQUE), topic(B-tree), type(B-tree), keywords(GIN), importance DESC(B-tree), created_at DESC(B-tree), agent_id(B-tree), linked_to(GIN), (ttl_tier, created_at)(B-tree), source(B-tree), verified_at(B-tree), is_anchor WHERE TRUE(부분 인덱스), valid_from(B-tree), (topic, type) WHERE valid_to IS NULL(부분 인덱스), id WHERE valid_to IS NULL(부분 UNIQUE). `idx_fragments_key_workspace` (key_id, workspace) WHERE valid_to IS NULL (복합 부분 인덱스 — API 키 + workspace 동시 필터 최적화), `idx_fragments_workspace` (workspace) WHERE workspace IS NOT NULL AND valid_to IS NULL (workspace 단독 전체 조회용 부분 인덱스).
 
 HNSW 벡터 인덱스는 `embedding IS NOT NULL` 조건부 인덱스로 생성된다. 파라미터: m=16(이웃 연결 수), ef_construction=128(인덱스 구축 탐색 깊이), 거리 함수 vector_cosine_ops. ef_search=80 (세션 레벨 SET LOCAL 적용).
 
@@ -343,6 +350,23 @@ CREATE POLICY fragment_isolation_policy ON agent_memory.fragments
 `key_id` 컬럼을 통해 API 키 단위의 추가 격리 레이어를 지원한다. 마스터 키(`MEMENTO_ACCESS_KEY`)로 접속한 요청이 저장한 파편은 `key_id = NULL`이며 마스터 키로만 조회 가능하다. DB에 발급된 API 키로 접속한 요청이 저장한 파편은 `key_id = <해당 키 ID>`로 기록되며 그 키만 조회할 수 있다.
 
 이 격리 모델은 다중 에이전트 환경에서 키 단위 메모리 파티셔닝을 구현한다. API 키는 Admin SPA(`/v1/internal/model/nothing`)에서 관리하며, 생성 시 원시 키(`mmcp_<slug>_<32 hex>`)는 응답에서 단 1회만 반환되고 DB에는 SHA-256 해시만 저장된다.
+
+### workspace 기반 기억 격리
+
+`fragments.workspace` 컬럼을 통해 동일 API 키 내에서도 프로젝트·직종·클라이언트 단위의 추가 격리 레이어를 지원한다.
+
+**NULL = 전역 파편**: `workspace IS NULL`인 파편은 어느 workspace 검색에서도 항상 노출된다. 기존 파편(workspace 미설정)과의 하위 호환성을 보장한다.
+
+**검색 필터**: workspace 지정 시 `(workspace = $X OR workspace IS NULL)` 조건이 적용된다. 해당 workspace 파편과 전역 파편이 함께 반환된다.
+
+**우선순위**: MCP 도구에서 명시적 `workspace` 파라미터 > 키의 `default_workspace` > NULL(전역).
+
+**설정 방법**: Admin SPA의 키 편집 화면에서 `default_workspace`를 설정하거나, `PATCH /v1/internal/model/nothing/keys/:id/workspace`로 변경한다.
+
+**사용 시나리오**:
+- 개발자가 여러 프로젝트를 같은 Claude Code 세션에서 전환할 때 (`workspace: "memento-mcp"`, `workspace: "docs-mcp"`)
+- 동일 에이전트가 업무/개인 기억을 분리할 때 (`workspace: "work"`, `workspace: "personal"`)
+- 프리랜서가 클라이언트별 기억을 격리할 때 (`workspace: "client-acme"`, `workspace: "client-xyz"`)
 
 Admin UI(`/v1/internal/model/nothing`)는 마스터 키 인증이 필요하다. Authorization Bearer 헤더로 인증한다. POST /auth 성공 시 HttpOnly 세션 쿠키가 발급되어 이후 요청에 자동 첨부된다.
 

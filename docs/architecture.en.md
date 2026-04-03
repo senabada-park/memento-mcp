@@ -50,7 +50,7 @@ server.js  (HTTP server)
             +-- EvaluationMetrics.js      tool_feedback-based implicit Precision@5 and downstream task success rate computation
             +-- MorphemeIndex.js          Morpheme-based L3 fallback index
             +-- TemporalLinker.js         Time-based auto-linking (same topic ±24h, weight=max(0.3, 1-hours/24), max 5 links)
-            +-- Reranker.js               Cross-Encoder reranking (external HTTP if RERANKER_URL set, otherwise ONNX in-process ms-marco-MiniLM-L-6-v2)
+            +-- Reranker.js               Cross-Encoder reranking (external HTTP if RERANKER_URL set, otherwise ONNX in-process; model selectable via RERANKER_MODEL: minilm/bge-m3)
             +-- memory-schema.sql         PostgreSQL schema definition
             +-- migration-001-temporal.sql Temporal schema migration (valid_from/to/superseded_by)
             +-- migration-002-decay.sql   Decay idempotency migration (last_decay_at)

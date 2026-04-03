@@ -82,7 +82,16 @@ RRF 병합 이후 상위 30건을 cross-encoder로 정밀 재정렬하여 검색
 
 **듀얼 모드:**
 - `RERANKER_URL` 설정 시: 외부 HTTP 서비스 (`POST /rerank { query, documents[] } → { scores[] }`)
-- 미설정 시: `@huggingface/transformers` + ONNX `ms-marco-MiniLM-L-6-v2` in-process (~80MB, CPU)
+- 미설정 시: `@huggingface/transformers` + ONNX in-process
+
+**In-Process 모델 선택 (`RERANKER_MODEL`):**
+
+| 값 | 모델 | 크기 | 언어 | 권장 대상 |
+|----|------|------|------|-----------|
+| `minilm` (기본값) | Xenova/ms-marco-MiniLM-L-6-v2 | ~80MB | 영어 전용 | 영어 사용자 |
+| `bge-m3` | onnx-community/bge-reranker-v2-m3-ONNX | ~280MB (q4) | 100+ 언어 (한국어 포함) | 비영어권 사용자 |
+
+> **비영어권 사용자는 `RERANKER_MODEL=bge-m3` 사용을 권장한다.** ms-marco-MiniLM-L-6-v2는 영어 MS MARCO 데이터셋으로만 학습되어 한국어 등 비영어 쿼리-문서 쌍의 관련성 판단 능력이 없다. bge-m3는 동일한 ONNX in-process 방식으로 동작하며, 첫 실행 시 HuggingFace Hub에서 자동 다운로드된다.
 
 **외부 서비스 장애 자동 전환:** 연속 3회 실패 시 inprocess 모드로 자동 전환. 외부 서비스가 복구되어도 재시작 전까지 inprocess 유지. 어느 모드든 scores 반환 실패 시 RRF 결과 그대로 반환(graceful degradation).
 

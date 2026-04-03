@@ -127,6 +127,7 @@ COMPRESS_MIN_GROUP      - 압축 그룹 최소 크기 (기본: 3)
 CONSOLIDATE_INTERVAL_MS - consolidate 주기 (기본: 3600000 = 1시간)
 ALLOWED_ORIGINS         - CORS 허용 Origin 목록 (쉼표 구분)
 RERANKER_ENABLED        - cross-encoder reranking 활성화 (기본: false)
+RERANKER_MODEL          - in-process 모델 선택: minilm (기본, 영어 전용) 또는 bge-m3 (다국어, 비영어권 권장)
 ```
 
 환경 변수 전체 목록은 [Configuration — 환경 변수](configuration.md#환경-변수) 참조.

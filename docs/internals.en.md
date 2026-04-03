@@ -82,7 +82,16 @@ After RRF merging, the top 30 candidates are reranked by a cross-encoder for hig
 
 **Dual mode:**
 - `RERANKER_URL` set: external HTTP service (`POST /rerank { query, documents[] } → { scores[] }`)
-- Not set: `@huggingface/transformers` + ONNX `ms-marco-MiniLM-L-6-v2` in-process (~80MB, CPU)
+- Not set: `@huggingface/transformers` + ONNX in-process
+
+**In-Process Model Selection (`RERANKER_MODEL`):**
+
+| Value | Model | Size | Language | Recommended for |
+|-------|-------|------|----------|-----------------|
+| `minilm` (default) | Xenova/ms-marco-MiniLM-L-6-v2 | ~80MB | English only | English users |
+| `bge-m3` | onnx-community/bge-reranker-v2-m3-ONNX | ~280MB (q4) | 100+ languages (incl. Korean) | Non-English users |
+
+> **Non-English users are strongly recommended to use `RERANKER_MODEL=bge-m3`.** ms-marco-MiniLM-L-6-v2 was fine-tuned exclusively on the English MS MARCO dataset and cannot reliably rank non-English query-document pairs. bge-m3 operates via the same ONNX in-process mechanism and downloads automatically from HuggingFace Hub on first run.
 
 **Automatic external-to-inprocess fallback:** After 3 consecutive failures, switches to in-process mode permanently until server restart. In either mode, if scores cannot be retrieved, the original RRF result is returned unchanged (graceful degradation).
 

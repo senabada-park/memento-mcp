@@ -20,6 +20,7 @@
 | CONSOLIDATE_INTERVAL_MS | 21600000 | Auto-maintenance (consolidate) interval (ms). Default 6 hours |
 | EVALUATOR_MAX_QUEUE | 100 | MemoryEvaluator queue size cap (older jobs dropped on overflow) |
 | OAUTH_ALLOWED_REDIRECT_URIS | (none) | OAuth redirect_uri allowed prefixes (comma-separated). Above 3 URIs allowed by default when env var is not set: `https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/aip/g/oauth/callback`, `https://platform.openai.com/oauth/callback` |
+| RERANKER_MODEL | minilm | ONNX model for in-process reranking. `minilm` (default, ~80MB, English-only) or `bge-m3` (~280MB, multilingual including Korean) |
 | FRAGMENT_DEFAULT_LIMIT | 5000 | Default fragment quota for new API keys (default: 5000, NULL=unlimited) |
 
 ### PostgreSQL
@@ -64,13 +65,15 @@ POSTGRES_* prefixes take precedence over DB_* prefixes. Both formats can be mixe
 | Variable | Default | Description |
 |----------|---------|-------------|
 | OPENAI_API_KEY | (none) | OpenAI API key. Used when `EMBEDDING_PROVIDER=openai` |
-| EMBEDDING_PROVIDER | openai | Embedding provider. `openai` \| `gemini` \| `ollama` \| `localai` \| `custom` |
+| EMBEDDING_PROVIDER | openai | Embedding provider. `openai` \| `gemini` \| `ollama` \| `localai` \| `cloudflare` \| `custom` |
 | EMBEDDING_API_KEY | (none) | Generic embedding API key. Falls back to `OPENAI_API_KEY` when unset |
 | EMBEDDING_BASE_URL | (none) | OpenAI-compatible endpoint URL when `EMBEDDING_PROVIDER=custom` |
 | EMBEDDING_MODEL | (provider default) | Embedding model to use. Provider-specific default applied when omitted |
 | EMBEDDING_DIMENSIONS | (provider default) | Embedding vector dimensions. Must match the DB schema's vector dimension |
 | EMBEDDING_SUPPORTS_DIMS_PARAM | (provider default) | Override dimensions parameter support (`true`\|`false`) |
 | GEMINI_API_KEY | (none) | Google Gemini API key. Used when `EMBEDDING_PROVIDER=gemini` |
+| CF_ACCOUNT_ID | (none) | Cloudflare account ID. Required when `EMBEDDING_PROVIDER=cloudflare` |
+| CF_API_TOKEN | (none) | Cloudflare API token. Required when `EMBEDDING_PROVIDER=cloudflare` |
 
 ---
 
@@ -247,6 +250,37 @@ ollama pull mxbai-embed-large
 ```env
 EMBEDDING_PROVIDER=localai
 ```
+
+---
+
+### Cloudflare Workers AI
+
+Uses Cloudflare Workers AI's OpenAI-compatible endpoint. The base URL is automatically constructed from `CF_ACCOUNT_ID`.
+
+```env
+EMBEDDING_PROVIDER=cloudflare
+CF_ACCOUNT_ID=your_account_id
+CF_API_TOKEN=your_api_token
+# EMBEDDING_MODEL=@cf/baai/bge-small-en-v1.5  # default
+```
+
+Find your Account ID on the Cloudflare dashboard → account home, lower right. Generate an API token with "Workers AI" permission.
+
+384 dimensions differs from the default schema (1536), so migration-007 must be run on first switch:
+
+```bash
+EMBEDDING_DIMENSIONS=384 DATABASE_URL=$DATABASE_URL \
+  node scripts/migration-007-flexible-embedding-dims.js
+DATABASE_URL=$DATABASE_URL node scripts/backfill-embeddings.js
+```
+
+| Model | Dimensions | Notes |
+|-------|-----------|-------|
+| @cf/baai/bge-small-en-v1.5 | 384 | Default. Lightweight, fast |
+| @cf/baai/bge-base-en-v1.5 | 768 | Balanced |
+| @cf/baai/bge-large-en-v1.5 | 1024 | High precision |
+
+> The `dimensions` parameter is not supported. When changing models, specify both `EMBEDDING_MODEL` and `EMBEDDING_DIMENSIONS` explicitly.
 
 ---
 
@@ -438,6 +472,8 @@ EMBEDDING_DIMENSIONS=768
 | Ollama (nomic-embed-text) | 768 | `EMBEDDING_PROVIDER=ollama` | Fully free (local) |
 | Ollama (mxbai-embed-large) | 1024 | `EMBEDDING_PROVIDER=ollama` | Fully free (local) |
 | LocalAI | Variable | `EMBEDDING_PROVIDER=localai` | Fully free (local) |
+| Cloudflare Workers AI (bge-small) | 384 | `EMBEDDING_PROVIDER=cloudflare` | Yes (10K req/day) |
+| Cloudflare Workers AI (bge-large) | 1024 | `EMBEDDING_PROVIDER=cloudflare` | Yes (10K req/day) |
 | Custom compatible server | Variable | `EMBEDDING_PROVIDER=custom` | -- |
 | Cohere embed-v4.0 | 1536 | Code replacement | None |
 | Voyage AI voyage-3.5 | 1024 | Code replacement | None |

@@ -51,7 +51,7 @@ server.js  (HTTP 서버)
             ├── LinkedFragmentLoader.js   연결 파편 일괄 로드 (1-hop 이웃 배치 조회)
             ├── GraphNeighborSearch.js    L2.5 그래프 이웃 검색 (fragment_links 1-hop 양방향 UNION, tanh 포화 스코어링 + 관계 유형별 부스트)
             ├── TemporalLinker.js         시간 기반 자동 링크 (동일 topic ±24h, weight=max(0.3, 1-hours/24), 최대 5건)
-            ├── Reranker.js               Cross-Encoder 재정렬 (RERANKER_URL 설정 시 외부 HTTP, 미설정 시 ONNX in-process ms-marco-MiniLM-L-6-v2)
+            ├── Reranker.js               Cross-Encoder 재정렬 (RERANKER_URL 설정 시 외부 HTTP, 미설정 시 ONNX in-process; RERANKER_MODEL로 minilm/bge-m3 선택)
             ├── EvaluationMetrics.js      tool_feedback 기반 implicit Precision@5 및 downstream task 성공률 계산
             ├── MorphemeIndex.js          형태소 기반 L3 폴백 인덱스
             ├── memory-schema.sql         PostgreSQL 스키마 정의

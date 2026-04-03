@@ -2935,15 +2935,6 @@ async function renderGraph(container) {
   loadBtn.textContent = "LOAD";
   loadBtn.addEventListener("click", loadGraph);
 
-  const keySelect   = document.createElement("select");
-  keySelect.id      = "graph-key-id";
-  keySelect.className = "bg-surface-container border border-outline-variant/30 rounded-sm px-3 py-1.5 text-sm text-on-surface focus:border-primary focus:outline-none";
-
-  const keyOptAll   = document.createElement("option");
-  keyOptAll.value   = "";
-  keyOptAll.textContent = "All keys";
-  keySelect.appendChild(keyOptAll);
-
   const groupSelect = document.createElement("select");
   groupSelect.id    = "graph-group-id";
   groupSelect.className = "bg-surface-container border border-outline-variant/30 rounded-sm px-3 py-1.5 text-sm text-on-surface focus:border-primary focus:outline-none";
@@ -2953,37 +2944,61 @@ async function renderGraph(container) {
   grpOptAll.textContent = "All groups";
   groupSelect.appendChild(grpOptAll);
 
-  /** keySelect 변경 시 groupSelect 리셋 후 자동 재로딩 (상호 배타적 필터) */
-  keySelect.addEventListener("change",   () => { if (keySelect.value)   groupSelect.value = ""; loadGraph(); });
-  groupSelect.addEventListener("change", () => { if (groupSelect.value) keySelect.value   = ""; loadGraph(); });
+  const keySelect   = document.createElement("select");
+  keySelect.id      = "graph-key-id";
+  keySelect.className = "bg-surface-container border border-outline-variant/30 rounded-sm px-3 py-1.5 text-sm text-on-surface focus:border-primary focus:outline-none";
 
-  /** /admin/keys 와 /admin/groups 비동기 로딩 */
+  const keyOptAll   = document.createElement("option");
+  keyOptAll.value   = "";
+  keyOptAll.textContent = "All keys";
+  keySelect.appendChild(keyOptAll);
+
+  /** /admin/keys + /admin/groups 비동기 로딩 후 캐스케이드 구성 */
   (async () => {
-    const [keysR, groupsR] = await Promise.all([
-      api("/keys"),
-      api("/groups"),
-    ]);
-    if (keysR.ok && Array.isArray(keysR.data)) {
-      for (const k of keysR.data) {
+    const [keysR, groupsR] = await Promise.all([api("/keys"), api("/groups")]);
+    const allKeys   = (keysR.ok   && Array.isArray(keysR.data))   ? keysR.data   : [];
+    const allGroups = (groupsR.ok && Array.isArray(groupsR.data)) ? groupsR.data : [];
+
+    /** keySelect를 주어진 키 목록으로 재구성 */
+    function rebuildKeySelect(keys, groupLabel) {
+      keySelect.innerHTML = "";
+      const first = document.createElement("option");
+      first.value       = "";
+      first.textContent = groupLabel ? `All (${groupLabel})` : "All keys";
+      keySelect.appendChild(first);
+      for (const k of keys) {
         const opt = document.createElement("option");
         opt.value       = String(k.id);
         opt.textContent = k.name || k.key_prefix || String(k.id);
         keySelect.appendChild(opt);
       }
     }
-    if (groupsR.ok && Array.isArray(groupsR.data)) {
-      for (const g of groupsR.data) {
-        const opt = document.createElement("option");
-        opt.value       = String(g.id);
-        opt.textContent = g.name || String(g.id);
-        groupSelect.appendChild(opt);
-      }
+
+    rebuildKeySelect(allKeys, null);
+
+    for (const g of allGroups) {
+      const opt = document.createElement("option");
+      opt.value       = String(g.id);
+      opt.textContent = g.name || String(g.id);
+      groupSelect.appendChild(opt);
     }
+
+    /** 그룹 선택 → keySelect를 해당 그룹 키만으로 재구성 */
+    groupSelect.addEventListener("change", () => {
+      const gid = groupSelect.value;
+      if (gid) {
+        const grp       = allGroups.find(g => String(g.id) === gid);
+        const filtered  = allKeys.filter(k => Array.isArray(k.groups) && k.groups.some(g => String(g.id) === gid));
+        rebuildKeySelect(filtered, grp?.name ?? gid);
+      } else {
+        rebuildKeySelect(allKeys, null);
+      }
+    });
   })();
 
   controls.appendChild(topicInput);
-  controls.appendChild(keySelect);
   controls.appendChild(groupSelect);
+  controls.appendChild(keySelect);
   controls.appendChild(limitLabel);
   controls.appendChild(loadBtn);
 

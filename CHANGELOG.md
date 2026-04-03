@@ -1,12 +1,26 @@
 # Changelog
 
-## [2.4.0] - 2026-04-02
+## [2.4.0] - 2026-04-03
+
+### Added
+- `reconstruct_history` MCP tool: case_id/entity 기반 시간순 서사 재구성, BFS 인과 체인, case_events DAG 포함 반환 (HistoryReconstructor, migration-026 연동)
+- `search_traces` MCP tool: fragments + search_events grep-like 탐색 (event_type/entity_key/keyword/case_id/session_id/time_range 필터, 기본 limit 20)
+- `remember` 파라미터 6개 추가: `caseId`, `goal`, `outcome`, `phase`, `resolutionStatus`, `assertionStatus` (migration-025 연동)
+- migration-025: fragments에 `case_id`, `goal`, `outcome`, `phase`, `resolution_status`, `assertion_status` 컬럼 추가 (`assertion_status` 기본값 `observed`)
+- migration-026: `case_events`(semantic milestone) + `case_event_edges`(DAG, edge_type: caused_by/resolved_by/preceded_by/contradicts) + `fragment_evidence`(증거 조인) 테이블
+- `CaseEventStore`: append/addEdge/addEvidence/getByCase/getBySession/deleteExpired 메서드
+- `ConflictResolver.checkAssertionConsistency()`: Jaccard 유사도 기반 assertion 자동 분류 (비동기 fire-and-forget)
+- `RERANKER_MODEL` 환경변수: `minilm`(기본) / `bge-m3` 선택 가능 (한국어 사용자 bge-m3 권장)
+- Cloudflare Workers AI embedding provider 지원 (`CF_ACCOUNT_ID` + `CF_API_TOKEN`)
 
 ### Fixed
 - workspace isolation: L1 HotCache bypass — `_executeSearch`에 RRF merge 후 workspace post-filter 추가 (cache miss fragments는 workspace 필드 미보장)
 - workspace isolation: `FragmentReader.getByIds` SELECT에 workspace 컬럼 누락으로 모든 반환 파편의 workspace가 `undefined` → NULL 취급되는 버그 수정
 - workspace isolation: `_searchL2` L1-miss 경로의 `getByIds` 결과에 workspace 후처리 필터 미적용 수정
 - `recall` 응답 직렬화에 workspace 필드 누락 수정 (fragments 항목에 `workspace` 필드 추가)
+- `reconstruct.js tool_reconstructHistory`: HistoryReconstructor 반환값에서 `case_events`, `event_dag` 필드 누락으로 MCP 응답에서 0/null 반환되던 버그 수정 (df2ebab)
+- `HistoryReconstructor`: 임시 디버그 `logInfo` 제거, `logWarn`만 유지
+- `_fetchTimelineParameterized` key_id isolation: `(f.key_id IS NULL OR f.key_id = $n)` → `($n::text IS NULL OR f.key_id = $n)` 수정 (master key null 전달 시 모든 파편 노출 방지)
 
 ### Changed
 - Session TTL default 240min → 43200min (30일 슬라이딩 윈도우)

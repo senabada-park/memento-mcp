@@ -2953,9 +2953,9 @@ async function renderGraph(container) {
   grpOptAll.textContent = "All groups";
   groupSelect.appendChild(grpOptAll);
 
-  /** keySelect 변경 시 groupSelect 리셋 (상호 배타적 필터) */
-  keySelect.addEventListener("change",   () => { if (keySelect.value)   groupSelect.value = ""; });
-  groupSelect.addEventListener("change", () => { if (groupSelect.value) keySelect.value   = ""; });
+  /** keySelect 변경 시 groupSelect 리셋 후 자동 재로딩 (상호 배타적 필터) */
+  keySelect.addEventListener("change",   () => { if (keySelect.value)   groupSelect.value = ""; loadGraph(); });
+  groupSelect.addEventListener("change", () => { if (groupSelect.value) keySelect.value   = ""; loadGraph(); });
 
   /** /admin/keys 와 /admin/groups 비동기 로딩 */
   (async () => {

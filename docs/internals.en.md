@@ -111,6 +111,64 @@ Runs asynchronously in the `MemoryManager._autoLinkOnRemember()` chain on every 
 
 ---
 
+## ReconsolidationEngine (Dynamic Link Updates)
+
+`lib/memory/ReconsolidationEngine.js` dynamically updates the weight and confidence of fragment_links and records change history in the link_reconsolidations table.
+
+**reconsolidate(linkId, action, opts) — 5 actions:**
+
+| action | weight delta | confidence delta | additional effect |
+|--------|-------------|-----------------|------------------|
+| reinforce | +0.2 | +0.05 | |
+| decay | -0.15 | -0.1 | |
+| quarantine | -0.3 | -0.1 | quarantine_state = 'soft' |
+| restore | +0.3 | +0.05 | quarantine_state = 'released' |
+| soft_delete | 0 | 0 | deleted_at = NOW() |
+
+Weight is clamped to [0, 2]; confidence is clamped to [0, 1].
+
+**Rate-limit:** decay/quarantine actions on the same link_id are blocked for 60 seconds (in-memory Map, lastDecayAt).
+
+**quarantineAdjacentLinks(fromId, toId, keyId):** Called by ConflictResolver on contradicts detection. Soft-quarantines all related/temporal links between the two conflicting fragments.
+
+**ENABLE_RECONSOLIDATION env var:** Must be set to `true` to activate (default: false). When disabled, neither tool_feedback nor ConflictResolver calls reconsolidate.
+
+---
+
+## EpisodeContinuityService (Episode Continuity)
+
+`lib/memory/EpisodeContinuityService.js` inserts a case_events milestone on reflect() calls and connects it to the previous episode via a preceded_by edge.
+
+**linkEpisodeMilestone(episodeFragmentId, agentId, keyId, sessionId):**
+
+1. Queries the first 200 characters of the fragment as summary
+2. Inserts a milestone_reached event into case_events (ON CONFLICT idempotency_key DO NOTHING — deduplication)
+3. If the in-memory cache holds the previous milestone eventId for the same agentId, inserts a preceded_by edge
+4. Stores the current eventId in the lastEventByAgent Map
+
+**idempotency_key format:** `milestone:{agentId}:{sessionId}:{fragmentId}` — prevents duplicate events on server restart.
+
+Called fire-and-forget after MemoryManager.reflect() completes. Failures do not affect the reflect result.
+
+---
+
+## SpreadingActivation (Spreading Activation)
+
+`lib/memory/SpreadingActivation.js` proactively activates relevant fragments from the current conversation context (contextText). Based on the ACT-R Spreading Activation model.
+
+**activateByContext(contextText, agentId, keyId, sessionId):**
+
+1. Extracts up to 8 keywords from contextText via FragmentFactory.extractKeywords()
+2. Queries seed fragments (up to 10) via keywords GIN index (valid_to IS NULL, key_id isolation applied)
+3. Runs 1-hop graph spread via fetchGraphNeighbors() (up to 10 fragments)
+4. Queues activated fragment IDs in activationQueue → drainQueue() updates activation_score +0.1, accessed_at/access_count
+
+**Cache:** 10-minute TTL keyed by `{agentId}:{keyId}:{sessionId}`. Prevents duplicate activation of already-activated fragments within the same session.
+
+Called fire-and-forget from MemoryManager.recall(). Only active when `ENABLE_SPREADING_ACTIVATION=true` (default: false).
+
+---
+
 ## Contradiction Detection Pipeline
 
 A 3-stage hybrid architecture that suppresses O(N^2) LLM comparison costs while maintaining precision.

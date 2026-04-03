@@ -71,8 +71,9 @@ psql "$DATABASE_URL" -f lib/memory/migration-015-created-at-index.sql
 psql "$DATABASE_URL" -f lib/memory/migration-016-agent-topic-index.sql
 psql "$DATABASE_URL" -f lib/memory/migration-017-episodic.sql
 psql $DATABASE_URL -f lib/memory/migration-021-oauth-clients.sql  # OAuth 클라이언트 등록
-psql $DATABASE_URL -f lib/memory/migration-025-narrative-columns.sql  # fragments narrative reconstruction 컬럼 (case_id, goal, outcome, phase, resolution_status, assertion_status)
+psql $DATABASE_URL -f lib/memory/migration-025-case-id-episode.sql    # fragments narrative reconstruction 컬럼 (case_id, goal, outcome, phase, resolution_status, assertion_status)
 psql $DATABASE_URL -f lib/memory/migration-026-case-events.sql        # case_events + case_event_edges + fragment_evidence 테이블 (Narrative Reconstruction Phase 3)
+psql $DATABASE_URL -f lib/memory/migration-027-v25-reconsolidation-episode-spreading.sql  # fragment_links 재통합 컬럼 + link_reconsolidations + case_events idempotency_key + keywords GIN 인덱스 (v2.5.0)
 ```
 
 v1.8.0부터 자동 마이그레이션을 지원한다. 위 수동 실행 대신:

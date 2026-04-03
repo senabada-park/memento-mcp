@@ -169,6 +169,64 @@ case_events 테이블에 semantic milestone을 기록하고 조회하는 전담 
 
 ---
 
+## ReconsolidationEngine (링크 동적 갱신)
+
+`lib/memory/ReconsolidationEngine.js`는 fragment_links의 weight와 confidence를 동적으로 갱신하고 변경 이력을 link_reconsolidations 테이블에 기록한다.
+
+**reconsolidate(linkId, action, opts) — 5가지 action:**
+
+| action | weight 변화 | confidence 변화 | 추가 효과 |
+|--------|------------|----------------|---------|
+| reinforce | +0.2 | +0.05 | |
+| decay | -0.15 | -0.1 | |
+| quarantine | -0.3 | -0.1 | quarantine_state = 'soft' |
+| restore | +0.3 | +0.05 | quarantine_state = 'released' |
+| soft_delete | 0 | 0 | deleted_at = NOW() |
+
+weight는 [0, 2] 범위로 클램핑되며, confidence는 [0, 1] 범위로 클램핑된다.
+
+**rate-limit:** decay/quarantine 계열 action은 동일 link_id에 대해 60초 내 재실행이 차단된다(in-memory Map, lastDecayAt).
+
+**quarantineAdjacentLinks(fromId, toId, keyId):** contradicts 충돌 감지 시 ConflictResolver가 호출한다. 해당 두 파편 간에 존재하는 related/temporal 관계 링크를 모두 soft quarantine한다.
+
+**ENABLE_RECONSOLIDATION 환경변수:** `true`로 설정해야 활성화된다(기본값: false). 비활성 시 tool_feedback과 ConflictResolver 모두 reconsolidate를 호출하지 않는다.
+
+---
+
+## EpisodeContinuityService (에피소드 연속성)
+
+`lib/memory/EpisodeContinuityService.js`는 reflect() 호출 시 episode 파편에 case_events milestone을 삽입하고 이전 에피소드와 preceded_by 엣지로 연결한다.
+
+**linkEpisodeMilestone(episodeFragmentId, agentId, keyId, sessionId):**
+
+1. fragment 내용 첫 200자를 요약으로 조회
+2. milestone_reached 이벤트를 case_events에 삽입 (ON CONFLICT idempotency_key DO NOTHING — 중복 방지)
+3. 동일 agentId의 직전 milestone eventId가 캐시에 있으면 preceded_by 엣지 삽입
+4. lastEventByAgent Map에 현재 eventId 저장
+
+**idempotency_key 형식:** `milestone:{agentId}:{sessionId}:{fragmentId}` — 서버 재시작 후 동일 호출이 재발생해도 중복 이벤트가 생성되지 않는다.
+
+MemoryManager.reflect() 완료 후 fire-and-forget으로 호출된다. 실패해도 reflect 결과에 영향을 주지 않는다.
+
+---
+
+## SpreadingActivation (확산 활성화)
+
+`lib/memory/SpreadingActivation.js`는 현재 대화 맥락(contextText)에서 관련 파편을 선제적으로 활성화한다. ACT-R Spreading Activation 모델 기반.
+
+**activateByContext(contextText, agentId, keyId, sessionId):**
+
+1. FragmentFactory.extractKeywords()로 contextText에서 키워드 최대 8개 추출
+2. keywords GIN 인덱스로 seed 파편 최대 10건 조회 (valid_to IS NULL, key_id 격리 적용)
+3. fetchGraphNeighbors()로 1-hop 그래프 확산 (최대 10건)
+4. 활성화된 파편 IDs를 activationQueue에 적재 → drainQueue()에서 activation_score +0.1, accessed_at/access_count 갱신
+
+**캐시:** `{agentId}:{keyId}:{sessionId}` 키로 10분 TTL. 동일 세션 내 이미 활성화된 파편을 중복 처리하지 않는다.
+
+MemoryManager.recall()에서 fire-and-forget으로 호출된다. `ENABLE_SPREADING_ACTIVATION=true`일 때만 활성화(기본값: false).
+
+---
+
 ## 모순 탐지 파이프라인
 
 3단계 하이브리드 구조로 O(N²) LLM 비교 비용을 억제하면서 정밀도를 유지한다.

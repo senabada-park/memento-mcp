@@ -35,6 +35,8 @@ context 로드 후 행동:
 - error 파편을 확인하여 현재 작업과 관련된 과거 에러/해결책을 인지
 - procedure 파편을 확인하여 프로젝트별 빌드/배포/테스트 절차를 파악
 - 사용자가 언급하는 주제에 대해 recall로 추가 컨텍스트 검색
+- 오늘 할 작업 맥락을 contextText로 전달하면 관련 파편을 선제적으로 활성화 가능:
+  `recall(topic="프로젝트명", contextText="오늘 작업 주제 한 줄 요약")`
 
 ### 2. 작업 중 (능동적 기억 관리)
 
@@ -57,6 +59,19 @@ context 로드 후 행동:
 | 설정/환경변수 변경 전 | `recall(keywords=["설정명", "프로젝트명"])` |
 | 동일 토픽 코드 작성 전 | `recall(topic="프로젝트명")` |
 | "이전에", "저번에" 언급 시 | `recall(text="관련 내용")` |
+| 복잡한 맥락의 작업 시작 | `recall(keywords=[...], contextText="작업 배경 요약")` |
+
+recall 후 결과 피드백 (누적 효과):
+```
+# recall 응답의 _searchEventId 보관 후 피드백 전송
+tool_feedback(
+  tool_name="recall", relevant=true/false, sufficient=true/false,
+  fragment_ids=["반환된_파편_id들"],
+  search_event_id=_searchEventId
+)
+```
+→ relevant=true: 링크 weight +0.2 (reinforce)
+→ relevant=false: 링크 weight -0.15 (decay), 반복 시 quarantine 가능
 
 #### forget 시점
 - 에러를 완전히 해결한 직후 해당 error 파편 삭제
@@ -85,6 +100,7 @@ reflect 규칙:
 - 여러 사실을 한 항목에 뭉치지 않는다
 - 관련 파편들이 맥락상 연결되어 있다면 episode 유형 파편을 추가 생성
 - contextSummary로 전후관계 요약을 첨부
+- sessionId를 전달하면 이전 세션의 episode와 자동으로 preceded_by 엣지가 생성됨 (경험 흐름 그래프 보존)
 
 ## 키워드 작성 규칙 (가장 중요)
 
@@ -154,6 +170,11 @@ remember(content="선호하는 코딩 스타일: ...", topic="preference", type=
   - timeRange={from, to} --> 시간 범위 제한
   - includeLinks=true    --> 연결된 파편 1-hop 포함 (기본값)
   - includeContext=true   --> episode의 context_summary + 인접 파편 포함
+
+맥락 사전 활성화 (ENABLE_SPREADING_ACTIVATION=true 환경에서 권장):
+  - contextText="현재 대화 요약" 추가 → 검색 전 관련 파편 activation_score 선제 부스트
+  - 효과: 키워드에 직접 등장하지 않지만 맥락상 관련된 파편이 상위 랭크됨
+  - 예: recall(keywords=["nginx"], contextText="SSL 인증서 갱신 중 오류 발생")
 ```
 
 ## 토큰 예산 관리
@@ -305,6 +326,7 @@ remember(
 | includeKeywords | boolean | - | 응답에 keywords 배열 포함 |
 | agentId | string | - | 에이전트 ID |
 | workspace | string | - | 검색 범위 제한. 지정 시 해당 workspace + 전역(NULL) 파편만 반환. |
+| contextText | string | - | 현재 대화 맥락 텍스트. 관련 파편을 선제적으로 활성화한다 (ENABLE_SPREADING_ACTIVATION=true 시 동작). |
 
 ### forget
 
@@ -385,6 +407,8 @@ summary 또는 sessionId 중 하나 이상 필수.
 | trigger_type | string | - | sampled 또는 voluntary |
 | fragment_ids | string[] | - | 피드백 대상 파편 ID (EMA 조정) |
 | search_event_id | integer | - | recall의 _searchEventId |
+
+fragment_ids를 지정하고 ENABLE_RECONSOLIDATION=true인 경우: relevant=false이면 해당 파편들의 fragment_links에 decay action, relevant=true이면 reinforce action이 적용된다. 이를 통해 검색 피드백이 링크 강도에 반영된다.
 
 ### memory_stats
 
@@ -500,7 +524,125 @@ summary 또는 sessionId 중 하나 이상 필수.
 |------|------|------|------|
 | L1 | PostgreSQL ILIKE | 정확한 용어 검색 | 가장 빠름 |
 | L2 | pgvector cosine | 의미적 유사 검색 | 빠름 |
-| L2.5 | 그래프 이웃 | 연결된 파편 확장 | 빠름 |
+| L2.5 | 그래프 이웃 | 연결된 파편 확장 (deleted_at IS NULL 활성 링크만) | 빠름 |
 | L3 | RRF 하이브리드 | L1+L2 결과 합산 | 보통 |
 
 recall 호출 시 keywords만 전달하면 L1->L2, text를 전달하면 L3까지 자동 확장.
+
+## 경험적 기억 활용 (Experiential Memory)
+
+"단순 기억 저장소"를 넘어 경험에서 학습하고 성장하는 기억 시스템을 위한 고급 패턴.
+
+### 1. 확산 활성화 — 맥락 연관 파편 선제 부스트
+
+`contextText`를 recall에 전달하면 검색 전 ACT-R 모델로 관련 파편의 activation_score를 미리 높인다.
+키워드 매칭에 등장하지 않아도 맥락상 관련된 파편이 상위로 올라온다.
+
+```
+# 일반 recall (키워드만)
+recall(keywords=["OAuth", "client_id"])
+
+# Spreading Activation recall (맥락 포함)
+recall(
+  keywords=["OAuth", "client_id"],
+  contextText="Claude.ai 연동 중 authentication 오류 발생. redirect_uri 관련 이슈 의심"
+)
+```
+
+contextText 작성 팁:
+- 현재 대화의 핵심 주제 1~2문장
+- 에러 메시지, 사용 중인 도구명, 의심 원인 포함
+- 100~200자 내외가 최적 (너무 길면 키워드 집중도 하락)
+
+### 2. 링크 재통합 — 피드백이 기억 강도를 바꾼다
+
+`tool_feedback`에 `fragment_ids`를 포함하면 해당 파편들의 연결 링크 weight/confidence가 실시간 갱신된다.
+(ENABLE_RECONSOLIDATION=true 환경 필요)
+
+```
+# 검색 결과가 유용했을 때 → fragment_links reinforce (+0.2)
+tool_feedback(
+  tool_name="recall",
+  relevant=true,
+  sufficient=true,
+  fragment_ids=["frag-abc", "frag-def"],
+  search_event_id=12345
+)
+
+# 검색 결과가 무관했을 때 → fragment_links decay (-0.15)
+tool_feedback(
+  tool_name="recall",
+  relevant=false,
+  fragment_ids=["frag-xyz"],
+  search_event_id=12345
+)
+```
+
+누적 효과:
+- 자주 함께 검색되고 유용했던 파편 쌍은 link weight가 높아져 L2.5 검색에서 더 많이 같이 반환됨
+- 무관한 파편 쌍은 weight가 낮아지고 quarantine_state='soft'로 격리될 수 있음
+- 모순(contradicts) 링크가 감지되면 인접 related/temporal 링크가 자동 격리됨
+
+### 3. 에피소드 연속성 — 경험 흐름을 그래프로 보존
+
+`reflect` 호출 시 생성된 episode 파편은 이전 세션의 episode와 자동으로 `preceded_by` 엣지로 연결된다.
+(EpisodeContinuityService, idempotency_key 기반 중복 방지)
+
+```
+# 세션 1 종료 시
+reflect(
+  summary=["OAuth 구현 1단계: DCR 엔드포인트 추가 완료"],
+  sessionId="sess-001"
+)
+# → episode-A 생성
+
+# 세션 2 종료 시
+reflect(
+  summary=["OAuth 구현 2단계: Claude.ai redirect_uri 동적 처리 완료"],
+  sessionId="sess-002"
+)
+# → episode-B 생성 + episode-A --preceded_by--> episode-B 엣지 자동 생성
+```
+
+이 그래프를 통해:
+- `reconstruct_history(entity="OAuth")` 호출 시 세션 간 경험 흐름을 시간순으로 재구성
+- 인과 체인(`caused_by`/`resolved_by`)과 에피소드 연속(`preceded_by`)을 함께 분석
+
+### 4. 히스토리 재구성 — 언제 어떤 도구를 쓸까
+
+| 상황 | 도구 | 이유 |
+|------|------|------|
+| 특정 케이스의 전체 흐름 파악 | `reconstruct_history(caseId=...)` | 인과 체인 + case_events DAG 포함 |
+| 특정 세션의 기록 확인 | `search_traces(session_id=...)` | 경량, 빠름 |
+| 에러 이벤트만 필터링 | `search_traces(event_type="error")` | 타입별 grep |
+| 특정 키워드 포함 파편 탐색 | `search_traces(keyword="nginx")` | 전문 키워드 매칭 |
+| 복잡한 버그의 근본 원인 추적 | `graph_explore(startId=error_frag_id)` | caused_by/resolved_by 1-hop RCA |
+
+### 5. 최적 활용 워크플로우
+
+**세션 시작:**
+```
+context()  → 핵심 맥락 복원
+recall(keywords=[프로젝트명], contextText="오늘 할 작업 한 줄 요약")
+           → Spreading Activation으로 관련 기억 사전 로드
+```
+
+**작업 중:**
+```
+# 검색 후 반드시 피드백 (reconsolidation 누적)
+recall(...) → _searchEventId 보관
+tool_feedback(fragment_ids=[...], search_event_id=..., relevant=true/false)
+
+# 인과 관계 발생 즉시 link
+link(fromId=에러파편, toId=해결파편, relationType="resolved_by")
+```
+
+**세션 종료:**
+```
+reflect(
+  summary=["사실1", "사실2"],
+  errors_resolved=["원인: X → 해결: Y"],
+  sessionId=현재세션ID
+)
+# → episode 파편 자동 생성 + preceded_by 엣지 자동 연결
+```

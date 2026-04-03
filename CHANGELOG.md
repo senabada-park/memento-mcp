@@ -29,6 +29,31 @@
 - `sessions.js validateStreamableSession()`: Redis 복원 시 TTL 갱신 및 `lastAccessedAt`/`expiresAt` 재설정 누락 수정 — 서버 재시작 후 복원된 세션이 즉시 만료되는 버그 수정
 
 ### Added
+- `ReconsolidationEngine.js`: fragment_links weight/confidence 동적 갱신 엔진
+  - `reconsolidate(linkId, action, opts)`: reinforce/decay/quarantine/restore/soft_delete 5종 action, 단일 트랜잭션
+  - `quarantineAdjacentLinks(fromId, toId, keyId)`: contradicts 감지 시 인접 related/temporal 링크 soft quarantine
+  - 동일 link 60초 내 재감쇠 방지 rate-limit (`lastDecayAt` Map)
+- `EpisodeContinuityService.js`: reflect() 후 episode 파편 간 preceded_by 엣지 자동 생성
+  - `linkEpisodeMilestone(episodeFragmentId, agentId, keyId, sessionId)`: idempotency_key 기반 중복 방지
+  - `lastEventByAgent` in-memory 캐시로 직전 이벤트 조회 쿼리 절감
+- `SpreadingActivation.js`: contextText 기반 비동기 활성화 전파 (ACT-R 모델)
+  - `activateByContext(contextText, agentId, keyId, sessionId)`: 키워드 추출 → 1-hop 그래프 확장 → activation_score boost
+  - `activationQueue` 비동기 큐 + `drainQueue()`: DB pool 과점유 방지
+  - 10분 TTL 캐시(`ACTIVATION_CACHE`)로 세션 내 중복 활성화 방지
+- migration-027-v25-reconsolidation-episode-spreading.sql (구 027~030 통합):
+  - `fragment_links`: confidence NUMERIC(4,3), decay_rate NUMERIC(6,5), deleted_at, delete_reason, quarantine_state 컬럼 추가
+  - `link_reconsolidations` 테이블: action별 weight/confidence 변경 이력
+  - `case_events`: idempotency_key TEXT NULL 컬럼 + UNIQUE 인덱스
+  - `idx_fragments_keywords_gin`: GIN 인덱스 (WHERE valid_to IS NULL), Spreading Activation 성능용
+  - `idx_fragment_links_active`: (from_id, to_id, relation_type) WHERE deleted_at IS NULL
+  - `idx_case_event_edges_preceded_by`: preceded_by 엣지 전용 인덱스
+- `recall` 파라미터 `contextText` 추가: SpreadingActivation 사전 활성화 트리거 (ENABLE_SPREADING_ACTIVATION=true 시 동작)
+- `tool_feedback` ENABLE_RECONSOLIDATION 연동: fragment_ids 지정 시 relevant=false → decay, relevant=true → reinforce action
+- `ConflictResolver.checkAssertionConsistency()`: ENABLE_RECONSOLIDATION=true 시 `quarantineAdjacentLinks` 호출
+- `GraphNeighborSearch`: fragment_links JOIN에 `AND fl.deleted_at IS NULL` 추가 — soft-deleted 링크 제외
+- `MemoryManager.reflect()`: `EpisodeContinuityService.linkEpisodeMilestone()` fire-and-forget 호출
+- `MemoryManager.recall()`: `SpreadingActivation.activateByContext()` fire-and-forget 사전 활성화
+- feature flags: `ENABLE_RECONSOLIDATION` (기본 false), `ENABLE_SPREADING_ACTIVATION` (기본 false), `ENABLE_PATTERN_ABSTRACTION` (기본 false)
 - `FragmentWriter.deleteMany(ids, agentId, keyId)`: fragment_links, linked_to 정리 후 일괄 삭제
 - `FragmentStore.deleteMany()`: FragmentWriter.deleteMany 위임
 

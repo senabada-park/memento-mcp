@@ -20,7 +20,7 @@ server.js  (HTTP server)
     +-- GET  /.well-known/oauth-protected-resource
     |
     +-- lib/jsonrpc.js        JSON-RPC 2.0 parsing and method dispatch
-    +-- lib/tool-registry.js  13 memory tool registration and routing
+    +-- lib/tool-registry.js  18 memory tool registration and routing
     |
     +-- lib/memory/
             +-- MemoryManager.js          Business logic facade (singleton)
@@ -76,6 +76,14 @@ server.js  (HTTP server)
             +-- migration-022-temporal-link-type.sql   fragment_links CHECK constraint adds temporal type
             +-- migration-023-link-weight-float.sql    fragment_links.weight integer→real (supports TemporalLinker float weights)
             +-- migration-024-workspace.sql            fragments.workspace + api_keys.default_workspace columns, 2 indexes
+            +-- ReconsolidationEngine.js  Dynamic fragment_links weight/confidence update engine (reinforce/decay/quarantine/restore/soft_delete + history recording)
+            +-- EpisodeContinuityService.js Inserts case_events milestone_reached + preceded_by edge after reflect() (idempotency_key-based dedup)
+            +-- SpreadingActivation.js    Async activation propagation based on contextText (ACT-R model, keywords GIN seed → 1-hop graph spread, 10-min TTL cache)
+            +-- CaseEventStore.js         Semantic milestone log (case_events CRUD, DAG edges, evidence join)
+            +-- HistoryReconstructor.js   case_id/entity-based narrative reconstruction (ordered_timeline, causal_chains, unresolved_branches)
+            +-- migration-025-case-id-episode.sql      fragments narrative reconstruction columns (case_id, goal, outcome, phase, resolution_status, assertion_status)
+            +-- migration-026-case-events.sql          case_events + case_event_edges + fragment_evidence tables (Narrative Reconstruction Phase 3)
+            +-- migration-027-v25-reconsolidation-episode-spreading.sql  search_events/case_events key_id type fix, fragment_links reconsolidation columns + link_reconsolidations table, case_events idempotency_key, fragments.keywords GIN index
 ```
 
 Supporting modules:
@@ -124,7 +132,7 @@ Tool implementations are separated into `lib/tools/`.
 
 ```
 lib/tools/
-+-- memory.js    13 MCP tool handlers
++-- memory.js    16 MCP tool handlers
 +-- memory-schemas.js  Tool schema definitions (inputSchema)
 +-- db.js        PostgreSQL connection pool, RLS-applied query helper (not exposed via MCP)
 +-- db-tools.js  MCP DB tool handlers (per-tool logic split from db.js)
@@ -189,7 +197,12 @@ erDiagram
         text from_id FK
         text to_id FK
         text relation_type
-        integer weight "Link strength (co_retrieved count accumulation)"
+        real weight "Link strength (float, default 1)"
+        numeric confidence "Confidence 0~1 (default 1.000)"
+        numeric decay_rate "Decay rate (default 0.005)"
+        timestamptz deleted_at "Soft-delete timestamp (NULL=active)"
+        text delete_reason "Deletion reason"
+        text quarantine_state "soft / released (NULL=normal)"
     }
     tool_feedback {
         bigserial id PK
@@ -255,11 +268,16 @@ A dedicated table for the relationship graph between fragments. Exists alongside
 | id | BIGSERIAL PK | Auto-increment identifier |
 | from_id | TEXT | Source fragment (ON DELETE CASCADE) |
 | to_id | TEXT | Target fragment (ON DELETE CASCADE) |
-| relation_type | TEXT | related / caused_by / resolved_by / part_of / contradicts / superseded_by / co_retrieved |
-| weight | INTEGER | Link strength. `co_retrieved` relations increment +1 on each co-recall. Default 1 |
+| relation_type | TEXT | related / caused_by / resolved_by / part_of / contradicts / superseded_by / co_retrieved / temporal |
+| weight | REAL | Link strength (float). `co_retrieved` relations increment +1 on each co-recall. Default 1 |
+| confidence | NUMERIC(4,3) | Link confidence 0~1. Dynamically updated by ReconsolidationEngine. Default 1.000 |
+| decay_rate | NUMERIC(6,5) | Link decay rate. Default 0.005 |
+| deleted_at | TIMESTAMPTZ | Soft-delete timestamp. NULL means active link |
+| delete_reason | TEXT | Deletion reason |
+| quarantine_state | TEXT | Quarantine state. soft (quarantined) / released (restored) / NULL (normal) |
 | created_at | TIMESTAMPTZ | Relation creation timestamp |
 
-A UNIQUE constraint on (from_id, to_id) prevents duplicate links; instead, weight is incremented.
+A UNIQUE constraint on (from_id, to_id) prevents duplicate links; instead, weight is incremented. The `idx_fragment_links_active` partial index (deleted_at IS NULL) enables efficient active-link-only queries.
 
 `co_retrieved` links are created asynchronously by `GraphLinker.buildCoRetrievalLinks()` when a recall result returns 2 or more fragments. Following Hebbian associative learning, fragment pairs frequently retrieved together accumulate higher weights.
 
@@ -307,6 +325,27 @@ Each time a fragment is modified via the amend tool, the previous version is pre
 | importance | REAL | Pre-edit importance |
 | amended_at | TIMESTAMPTZ | Edit timestamp |
 | amended_by | TEXT | Editing agent_id |
+
+### link_reconsolidations
+
+Audit table recording weight/confidence change history for fragment_links. ReconsolidationEngine inserts a row on each reconsolidate() call.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | BIGSERIAL PK | |
+| link_id | BIGINT | Target link ID (ON DELETE CASCADE) |
+| action | TEXT | reinforce / decay / quarantine / restore / soft_delete |
+| old_weight | REAL | Weight before change |
+| new_weight | REAL | Weight after change |
+| old_confidence | NUMERIC(4,3) | Confidence before change |
+| new_confidence | NUMERIC(4,3) | Confidence after change |
+| reason | TEXT | Change reason |
+| triggered_by | TEXT | Trigger source (e.g., tool_feedback:recall) |
+| key_id | TEXT | API key isolation |
+| metadata | JSONB | Additional metadata |
+| created_at | TIMESTAMPTZ | |
+
+---
 
 ### Row-Level Security
 

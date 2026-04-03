@@ -10,7 +10,7 @@
 |------|--------|------|
 | PORT | 57332 | HTTP 리슨 포트 |
 | MEMENTO_ACCESS_KEY | (없음) | Bearer 인증 키. 미설정 시 인증 비활성화 |
-| SESSION_TTL_MINUTES | 240 | 세션 유효 시간 (분) |
+| SESSION_TTL_MINUTES | 43200 | 세션 유효 시간 (분). 기본값 30일. 슬라이딩 윈도우 방식으로 도구 사용 시마다 갱신 |
 | LOG_DIR | ./logs | Winston 로그 파일 저장 디렉토리 |
 | ALLOWED_ORIGINS | (없음) | 허용할 Origin 목록. 쉼표로 구분. 미설정 시 전체 허용 |
 | RATE_LIMIT_WINDOW_MS | 60000 | Rate limiting 윈도우 크기 (ms) |
@@ -31,6 +31,9 @@
 | RERANKER_ENABLED | false | cross-encoder reranking 활성화. true 시 recall 결과를 cross-encoder로 재순위화 |
 | RERANKER_MODEL | minilm | in-process 모드 ONNX 모델 선택. `minilm` (기본값, ~80MB, 영어 전용) 또는 `bge-m3` (~280MB, 다국어). **비영어권 사용자는 `bge-m3` 권장** — minilm은 영어 MS MARCO 데이터셋으로만 학습되어 한국어 등 비영어 파편 재순위화 품질이 저하됨. |
 | FRAGMENT_DEFAULT_LIMIT | 5000 | 새 API 키 생성 시 기본 파편 할당량 (기본: 5000, NULL=무제한) |
+| ENABLE_RECONSOLIDATION | false | ReconsolidationEngine 활성화. true 시 tool_feedback과 contradicts 감지 시 fragment_links weight/confidence를 동적 갱신한다 |
+| ENABLE_SPREADING_ACTIVATION | false | SpreadingActivation 활성화. true 시 recall의 contextText 파라미터로 관련 파편을 선제적 활성화한다. 레이턴시 영향 측정 후 활성화 권장 |
+| ENABLE_PATTERN_ABSTRACTION | false | 패턴 추상화 활성화. 데이터 충분 축적 후 활성화 예정 (현재 미구현) |
 
 ### PostgreSQL
 

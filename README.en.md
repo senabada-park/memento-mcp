@@ -23,11 +23,13 @@
 
 # Memento MCP
 
-> Give your AI a memory.
+> Give your AI a memory. Then let it use that memory as a foundation to grow.
 
 Imagine a new employee whose memory resets every morning. Everything you taught yesterday, every problem you solved together last week, every preference -- all forgotten. Memento MCP gives this new hire a memory.
 
 Memento MCP is a long-term memory server for AI agents, built on MCP (Model Context Protocol). It persists important facts, decisions, error patterns, and procedures across sessions and restores them in the next.
+
+This is not a library of memories. As feedback accumulates, connections strengthen. As experiences repeat, patterns abstract. As sessions continue, context becomes narrative. The goal is not an AI that remembers — it is an AI that grows from experience.
 
 ## 30-Second Demo
 
@@ -132,6 +134,9 @@ See [integration guides](docs/getting-started/) for platform-specific setup.
 | `recall` | Returns relevant memories via keyword + semantic 3-tier search |
 | `context` | Automatically restores key context at session start |
 | Auto-cleanup | Duplicate merging, contradiction detection, importance decay, TTL-based forgetting |
+| **Link Reconsolidation** | `tool_feedback` signals update fragment_links weight/confidence in real time (ReconsolidationEngine). Contradicting links are automatically quarantined. |
+| **Spreading Activation** | Passing `contextText` to `recall` pre-boosts activation_score for contextually related fragments, surfacing more relevant results (SpreadingActivation). |
+| **Episode Continuity** | After `reflect`, `preceded_by` edges are automatically created between episode fragments to preserve the flow of experience as a graph (EpisodeContinuityService). |
 | Admin Console | Memory explorer, knowledge graph, statistics dashboard, API key group/status filters, inline daily-limit editing |
 | OAuth Integration | RFC 7591 Dynamic Client Registration, Claude.ai Web and ChatGPT integration support |
 | **Workspace isolation** | Partition memories by project, role, or client within the same API key. Auto-tag via `api_keys.default_workspace`, auto-filter on recall. |
@@ -225,6 +230,8 @@ The biggest problem was the endless repetition. Having to re-state things I had 
 "Do you remember Mijeong?" -- without a cue, nothing comes to mind. But say "your desk mate from first grade" and suddenly you remember her lending you an eraser. AI works the same way. The bug you fixed yesterday, the decision you made last week, your preferred coding style. Instead of resetting every session, Memento remembers for you.
 
 To solve this pain, I designed a system that decomposes memories into atomic units, searches them hierarchically, and lets them decay naturally over time. Just as humans are creatures of forgetting, this system embraces "appropriate forgetting" as a feature.
+
+And it does not stop there. As feedback accumulates, connections grow stronger and weak links fade. As patterns repeat, they abstract into higher-order knowledge. As episodes chain across sessions, context becomes narrative. The goal was never to build a library. It was to build an AI that grows from experience.
 
 ---
 

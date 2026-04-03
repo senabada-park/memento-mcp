@@ -113,6 +113,13 @@ psql "$DATABASE_URL" -f lib/memory/migration-017-episodic.sql
 
 # OAuth client registration
 psql $DATABASE_URL -f lib/memory/migration-021-oauth-clients.sql
+
+# Narrative Reconstruction columns
+psql $DATABASE_URL -f lib/memory/migration-025-case-id-episode.sql
+psql $DATABASE_URL -f lib/memory/migration-026-case-events.sql
+
+# v2.5.0: Reconsolidation, Episode Continuity, Spreading Activation
+psql $DATABASE_URL -f lib/memory/migration-027-v25-reconsolidation-episode-spreading.sql
 ```
 
 Since v1.8.0, automatic migration is supported. Instead of running each file manually:

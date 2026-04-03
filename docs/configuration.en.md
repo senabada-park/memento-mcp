@@ -10,7 +10,7 @@
 |----------|---------|-------------|
 | PORT | 57332 | HTTP listen port |
 | MEMENTO_ACCESS_KEY | (none) | Bearer authentication key. Authentication disabled when unset |
-| SESSION_TTL_MINUTES | 240 | Session TTL (minutes) |
+| SESSION_TTL_MINUTES | 43200 | Session TTL (minutes). Default 30 days. Sliding window: TTL resets on every tool call |
 | LOG_DIR | ./logs | Winston log file directory |
 | ALLOWED_ORIGINS | (none) | Allowed Origins list. Comma-separated. All origins allowed when unset |
 | RATE_LIMIT_WINDOW_MS | 60000 | Rate limiting window size (ms) |
@@ -22,6 +22,9 @@
 | OAUTH_ALLOWED_REDIRECT_URIS | (none) | OAuth redirect_uri allowed prefixes (comma-separated). Above 3 URIs allowed by default when env var is not set: `https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/aip/g/oauth/callback`, `https://platform.openai.com/oauth/callback` |
 | RERANKER_MODEL | minilm | ONNX model for in-process reranking. `minilm` (default, ~80MB, English-only) or `bge-m3` (~280MB, multilingual including Korean) |
 | FRAGMENT_DEFAULT_LIMIT | 5000 | Default fragment quota for new API keys (default: 5000, NULL=unlimited) |
+| ENABLE_RECONSOLIDATION | false | Enable ReconsolidationEngine. When true, tool_feedback and contradicts detection dynamically update fragment_links weight/confidence |
+| ENABLE_SPREADING_ACTIVATION | false | Enable SpreadingActivation. When true, the contextText parameter in recall proactively activates related fragments. Recommended to measure latency impact before enabling |
+| ENABLE_PATTERN_ABSTRACTION | false | Enable pattern abstraction. Planned for activation after sufficient data accumulation (not yet implemented) |
 
 ### PostgreSQL
 

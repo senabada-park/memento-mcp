@@ -111,7 +111,7 @@ describe("getPathPerformance — return shape contract", () => {
     const SQL = `
       SELECT
         search_path,
-        rrf_used,
+        used_rrf,
         COUNT(*)::int                             AS search_count,
         ROUND(AVG(latency_ms)::numeric, 1)        AS avg_latency_ms,
         ROUND(AVG(result_count)::numeric, 1)      AS avg_result_count,
@@ -120,7 +120,7 @@ describe("getPathPerformance — return shape contract", () => {
         ROUND(AVG(l3_latency_ms)::numeric, 1)     AS avg_l3_ms
       FROM agent_memory.search_events
       WHERE created_at > NOW() - INTERVAL '1 day' * $1
-      GROUP BY search_path, rrf_used
+      GROUP BY search_path, used_rrf
       ORDER BY search_count DESC
     `;
     try {
@@ -135,7 +135,7 @@ describe("getPathPerformance — return shape contract", () => {
     const mockRows = [
       {
         search_path    : "L2:5 → L3:4 → RRF",
-        rrf_used       : true,
+        used_rrf       : true,
         search_count   : 42,
         avg_latency_ms : "120.5",
         avg_result_count: "7.2",
@@ -145,7 +145,7 @@ describe("getPathPerformance — return shape contract", () => {
       },
       {
         search_path    : "L1:3 → L2:8",
-        rrf_used       : false,
+        used_rrf       : false,
         search_count   : 18,
         avg_latency_ms : "30.0",
         avg_result_count: "5.0",
@@ -163,7 +163,7 @@ describe("getPathPerformance — return shape contract", () => {
 
     const first = result[0];
     assert.ok("search_path"     in first, "search_path 필드 필수");
-    assert.ok("rrf_used"        in first, "rrf_used 필드 필수");
+    assert.ok("used_rrf"        in first, "used_rrf 필드 필수");
     assert.ok("search_count"    in first, "search_count 필드 필수");
     assert.ok("avg_latency_ms"  in first, "avg_latency_ms 필드 필수");
     assert.ok("avg_result_count"in first, "avg_result_count 필드 필수");
@@ -174,8 +174,8 @@ describe("getPathPerformance — return shape contract", () => {
 
   it("search_count 내림차순으로 정렬된다 (mock 데이터 기준)", async () => {
     const mockRows = [
-      { search_path: "path-A", rrf_used: true,  search_count: 100, avg_latency_ms: "50.0", avg_result_count: "5.0", avg_l1_ms: null, avg_l2_ms: "20.0", avg_l3_ms: "25.0" },
-      { search_path: "path-B", rrf_used: false, search_count:  30, avg_latency_ms: "20.0", avg_result_count: "3.0", avg_l1_ms: "5.0", avg_l2_ms: "12.0", avg_l3_ms: null },
+      { search_path: "path-A", used_rrf: true,  search_count: 100, avg_latency_ms: "50.0", avg_result_count: "5.0", avg_l1_ms: null, avg_l2_ms: "20.0", avg_l3_ms: "25.0" },
+      { search_path: "path-B", used_rrf: false, search_count:  30, avg_latency_ms: "20.0", avg_result_count: "3.0", avg_l1_ms: "5.0", avg_l2_ms: "12.0", avg_l3_ms: null },
     ];
 
     const mockPool = { query: async () => ({ rows: mockRows }) };

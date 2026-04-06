@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.5.3] - 2026-04-06
+
+### Fixed
+- `search_events.session_id` 미기록: `MemoryManager.recall()` → `FragmentSearch.search()` 호출 시 sessionId 누락 수정
+- `search_events` 빈 `search_path` 326건: non-text 검색 경로에서 L2 결과 0건일 때 searchPath 미기록 수정
+- `SearchEventRecorder` INSERT에서 `used_rrf`/`rrf_used` 동일값 이중 삽입 수정
+
+### Removed
+- `search_events.rrf_used` 컬럼 제거 — `used_rrf`로 단일화 (migration-028)
+- `fragments.superseded_by` dead 컬럼 제거 — `fragment_links` 기반으로 완전 대체 (migration-028)
+
+### Changed
+- migration-028+029+031 → `migration-028-v253-improvements.sql` 단일 파일로 통합
+
 ## [2.5.2] - 2026-04-05
 
 ### Refactored

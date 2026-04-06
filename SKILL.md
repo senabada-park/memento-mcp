@@ -396,6 +396,9 @@ curl -s -X POST $SERVER_URL \
 | agentId | string | - | 에이전트 ID |
 | workspace | string | - | 검색 범위 제한. 지정 시 해당 workspace + 전역(NULL) 파편만 반환. |
 | contextText | string | - | 현재 대화 맥락 텍스트. 관련 파편을 선제적으로 활성화한다 (ENABLE_SPREADING_ACTIVATION=true 시 동작). |
+| caseId | string | - | 케이스 ID 필터. 해당 케이스에 속한 파편만 반환. |
+| resolutionStatus | string | - | 해결 상태 필터 (open / resolved / abandoned) |
+| phase | string | - | 작업 단계 필터 (planning, debugging, verification 등) |
 
 ### forget
 
@@ -945,3 +948,6 @@ recall 또는 context 응답에 `_memento_hint` 필드가 있으면:
 | reflect 없이 세션 종료 | 이번 세션 작업이 전부 휘발됨 | 중요 작업 완료 후 reflect |
 | remember 후 link 생략 | 고립된 파편만 생성, 그래프 연결 없음 | 인과관계 있는 파편은 link로 연결 |
 | 모든 내용을 하나의 파편에 저장 | 검색 정밀도 저하, 중요도 희석 | 원자적 분해 (1 사실 = 1 파편) |
+| 불필요한 remember 남발 | fragment_limit 쿼터 소진, 노이즈 증가로 검색 품질 저하 | 저장 전 "다음 세션에서 필요한가?" 자문, 일시적 정보는 저장하지 않음 |
+| importance 미지정 (모든 파편 0.5) | recall 시 중요/비중요 파편 구분 불가, 핵심 정보가 노이즈에 묻힘 | 상황별 중요도 기본값 표 참조, 최소 0.6 이상 명시 |
+| keywords 미지정 | 자동 추출에 의존하면 프로젝트명/호스트명 등 핵심 키워드 누락 | 프로젝트명 + 토픽 + 고유 식별자를 keywords에 명시적으로 포함 |

@@ -271,14 +271,14 @@ async function gracefulShutdown(signal) {
     console.log("[Shutdown] Workers drained");
   }
 
-  /** 3. 활성 세션 auto-reflect */
-  console.log("[Shutdown] Closing all sessions (with auto-reflect)...");
+  /** 3. 활성 세션 auto-reflect (Redis 세션은 유지 — 재시작 후 복원 가능) */
+  console.log("[Shutdown] Closing all sessions (with auto-reflect, preserving Redis)...");
   const { streamableIds, legacyIds } = getAllSessionIds();
   for (const sessionId of streamableIds) {
-    await closeStreamableSession(sessionId);
+    await closeStreamableSession(sessionId, { preserveRedis: true });
   }
   for (const sessionId of legacyIds) {
-    await closeLegacySseSession(sessionId);
+    await closeLegacySseSession(sessionId, { preserveRedis: true });
   }
 
   /** 4. DB/Redis 연결 종료 */

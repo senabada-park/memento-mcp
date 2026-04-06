@@ -35,6 +35,17 @@
 | ENABLE_SPREADING_ACTIVATION | false | SpreadingActivation 활성화. true 시 recall의 contextText 파라미터로 관련 파편을 선제적 활성화한다. 레이턴시 영향 측정 후 활성화 권장 |
 | ENABLE_PATTERN_ABSTRACTION | false | 패턴 추상화 활성화. 데이터 충분 축적 후 활성화 예정 (현재 미구현) |
 
+#### OAuth 토큰 TTL
+
+OAuth 액세스 토큰과 리프레시 토큰의 TTL은 `SESSION_TTL_MINUTES`에서 파생된다. 별도의 환경변수는 없다.
+
+| 내부 상수 | 산출 공식 | 기본값 |
+|-----------|----------|--------|
+| OAUTH_TOKEN_TTL_SECONDS | SESSION_TTL_MINUTES * 60 | 2592000 (30일) |
+| OAUTH_REFRESH_TTL_SECONDS | OAUTH_TOKEN_TTL_SECONDS * 2 | 5184000 (60일) |
+
+슬라이딩 윈도우: OAuth 인증된 요청이 들어올 때마다 해당 액세스 토큰의 Redis TTL을 `OAUTH_TOKEN_TTL_SECONDS`로 재설정한다. 도구를 계속 사용하는 한 토큰이 만료되지 않으며, `SESSION_TTL_MINUTES`를 변경하면 세션 TTL과 OAuth 토큰 TTL이 함께 조정된다.
+
 ### PostgreSQL
 
 POSTGRES_* 접두어가 DB_* 접두어보다 우선한다. 두 형식을 혼용할 수 있다.

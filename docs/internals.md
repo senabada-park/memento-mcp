@@ -286,3 +286,38 @@ mDeBERTa NLI (in-process ONNX / 외부 HTTP 서비스)
 - **데이터 무손실**: 파편 삭제 대신 temporal 컬럼으로 버전 관리
 - **구현 파일**: `lib/memory/NLIClassifier.js`, `lib/memory/MemoryConsolidator.js`
 - **환경변수**: `NLI_SERVICE_URL` 미설정 시 ONNX in-process 자동 사용 (~280MB, 최초 실행 시 다운로드)
+
+---
+
+## Smart Recall (v2.5.6)
+
+remember/recall 파이프라인에 3개의 자동 학습 서브시스템이 추가되었다.
+
+### ProactiveRecall (RememberPostProcessor)
+
+remember() 후처리 파이프라인의 마지막 단계. 저장된 파편의 키워드로 L1/L3 검색을 수행하고, 기존 파편과 keyword overlap >= 0.5인 경우 `related_to` 링크를 생성한다.
+
+- 검색: `FragmentSearch.search({ keywords, tokenBudget: 400, fragmentCount: 5 })`
+- 링크 기준: `|shared_keywords| / max(|new_kw|, |candidate_kw|) >= 0.5`
+- fire-and-forget: `_proactiveRecallPromise`로 추적 (테스트 안정성)
+- 임베딩 미사용: remember 시점에 임베딩이 아직 생성되지 않으므로 keyword 경로만 사용
+
+### CaseRewardBackprop (CaseEventStore -> CaseRewardBackprop)
+
+case_events에 verification 이벤트가 추가되면, 해당 케이스의 증거 파편(fragment_evidence JOIN) importance를 원자적으로 조정한다.
+
+- SQL: `UPDATE fragments SET importance = LEAST(1.0, GREATEST(0.0, importance + $delta)) FROM fragment_evidence, case_events WHERE ...`
+- 동시성: UPDATE FROM은 행 잠금으로 원자적. read-modify-write race condition 없음.
+- 트리거: `CaseEventStore.append()` COMMIT 후 fire-and-forget
+- 싱글톤: `getBackprop()` (서버 수명 동안 공유)
+
+### SearchParamAdaptor (FragmentSearch -> SearchParamAdaptor)
+
+검색 호출마다 결과 건수를 `search_param_thresholds` 테이블에 기록하고, minSimilarity를 DB-level CASE 표현식으로 원자적 조정한다.
+
+- 테이블: `agent_memory.search_param_thresholds` (migration-029)
+- 키: `(key_id, query_type, hour_bucket)` — key_id=-1은 마스터/전체 기본값
+- 학습: `sample_count >= 50` 이후 적용
+- 적응: `avg_result < 1 -> -0.01`, `avg_result > 8 -> +0.01` (대칭, [0.10, 0.60])
+- UPSERT: SELECT 없이 단일 INSERT...ON CONFLICT DO UPDATE (TOCTOU-free)
+- 통합: `_buildSearchQuery()`에서 Promise 부착, `_searchL3()`에서 await

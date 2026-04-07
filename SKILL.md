@@ -568,6 +568,32 @@ fragment_ids를 지정하고 ENABLE_RECONSOLIDATION=true인 경우: relevant=fal
 { "keyword": "authentication", "event_type": "error", "limit": 10 }
 ```
 
+## 자동 백그라운드 동작 (v2.5.6)
+
+다음 3개 기능은 별도 도구 호출 없이 자동으로 동작한다.
+
+### ProactiveRecall
+- **트리거**: 모든 `remember()` 호출 직후
+- **동작**: 저장된 파편의 키워드와 50% 이상 겹치는 기존 파편을 검색하여 `related_to` 링크를 자동 생성
+- **영향**: recall 시 관련 파편이 그래프 이웃으로 함께 조회됨 (L2.5 경로)
+- **제어**: search 의존성이 없으면 비활성 (기본값: 활성)
+
+### CaseRewardBackprop
+- **트리거**: case_events에 `verification_passed` 또는 `verification_failed` 이벤트가 추가될 때
+- **동작**: 해당 케이스의 증거(fragment_evidence) 파편 importance를 역전파
+  - verification_passed: importance +0.15, quality_verified = true
+  - verification_failed: importance -0.10
+- **영향**: 검증된 파편의 recall 우선순위가 자동 조정됨
+- **범위**: importance [0.0, 1.0] clamp
+
+### SearchParamAdaptor
+- **트리거**: 모든 `recall()` / 검색 호출 시
+- **동작**: key_id x query_type x hour 조합별 검색 결과 수를 추적하여 minSimilarity를 자동 조정
+  - 결과 부족(avg < 1): 임계값 하향 (더 관대한 검색)
+  - 결과 과다(avg > 8): 임계값 상향 (더 엄격한 검색)
+- **학습**: 50회 이상 샘플 축적 후 적용, 범위 [0.10, 0.60]
+- **영향**: 사용 패턴에 따라 검색 정밀도가 자동 최적화됨
+
 ## 중요도 기본값
 
 | 타입 | 권장 | 근거 |

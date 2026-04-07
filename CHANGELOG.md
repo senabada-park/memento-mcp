@@ -1,5 +1,33 @@
 # Changelog
 
+## [2.5.7] - 2026-04-07
+
+### Security
+- **Tenant Isolation**: `key_id IS NULL OR key_id = $N` 패턴 14건 전수 제거 — API 키 사용자가 마스터(key_id=NULL) 파편에 접근/수정/삭제 가능했던 취약점 수정
+  - FragmentWriter: deleteMany, patchAssertion
+  - MemoryManager: toolFeedback EMA 업데이트
+  - CaseEventStore: getByCase, getBySession
+  - HistoryReconstructor: _fetchTimelineParameterized
+  - CaseRewardBackprop: backprop (TEXT 타입 불일치 동시 해결)
+  - ConflictResolver, SpreadingActivation, reconstruct.js 추가 발견 3건
+- **Cross-tenant write 차단**: findCaseIdBySessionTopic/findErrorFragmentsBySessionTopic/updateCaseId/touchLinked에 keyId 격리 필터 추가
+
+### Added
+- `tests/unit/tenant-isolation.test.js`: grep 기반 회귀 방지 가드 — `key_id IS NULL OR key_id` 패턴 자동 탐지
+
+### Refactored
+- **Admin UI ESM 모듈화**: admin.js 4,860줄 → 58줄 엔트리포인트 + 13개 도메인별 ESM 모듈 (번들러 없이 브라우저 네이티브 ESM)
+  - modules/: state, api, ui, format, auth, layout, overview, keys, groups, sessions, graph, logs, memory
+  - index.html: `<script type="module">` 전환
+
+### Performance
+- **Knowledge Graph 렌더링 최적화**:
+  - 시뮬레이션/드래그 중 SVG blur 필터 비활성화, 안정화 후 복원 (~70% 프레임 비용 감소)
+  - 인접맵(adjMap) 사전 구축: hover 시 O(L) → O(1) 링크 하이라이트
+  - 위성 rAF 제어: 시뮬레이션 중 정지, document.hidden 시 중단
+  - tick 핸들러 경량화: ring rotate 1회 적용, alphaDecay 0.05 수렴 가속
+- **행성 크기 ±15% 결정적 난수**: fragRng 기반 nodeR jitter 적용
+
 ## [2.5.6] - 2026-04-07
 
 ### Added

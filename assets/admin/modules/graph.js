@@ -260,6 +260,17 @@ async function loadGraph() {
     .filter(e => nodeIds.has(e.from_id) && nodeIds.has(e.to_id))
     .map(e => ({ source: e.from_id, target: e.to_id, type: e.relation_type, weight: e.weight }));
 
+  /** G2: 인접맵 사전 구축 — hover O(L) → O(1) */
+  const adjMap = new Map();
+  links.forEach((l, i) => {
+    const sId = typeof l.source === "object" ? l.source.id : l.source;
+    const tId = typeof l.target === "object" ? l.target.id : l.target;
+    if (!adjMap.has(sId)) adjMap.set(sId, new Set());
+    if (!adjMap.has(tId)) adjMap.set(tId, new Set());
+    adjMap.get(sId).add(i);
+    adjMap.get(tId).add(i);
+  });
+
   /** ── SVG Defs: 필터 + 그라데이션 ── */
   const defs = svg.append("defs");
 
@@ -453,6 +464,7 @@ async function loadGraph() {
   const chargeStrength = data.nodes.length > 80 ? -80 : data.nodes.length > 30 ? -150 : -200;
 
   const sim = d3.forceSimulation(data.nodes)
+    .alphaDecay(0.05)
     .force("link",    d3.forceLink(links).id(d => d.id).distance(80))
     .force("charge",  d3.forceManyBody().strength(chargeStrength))
     .force("center",  d3.forceCenter(width / 2, height / 2))
@@ -512,7 +524,17 @@ async function loadGraph() {
     .style("filter", d => `brightness(${nodeBrightness(d)})`)
     .style("cursor", "grab")
     .call(d3.drag()
-      .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("start", (e, d) => {
+        if (!e.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+        /** G1c: 드래그 시 blur 필터 비활성화 */
+        node.attr("filter", null);
+        halo.attr("filter", null).attr("stroke-opacity", 0);
+        linkGlow.attr("stroke-opacity", 0);
+        labels.attr("display", "none");
+        /** G3c: 드래그 시 위성 rAF 정지 */
+        if (_moonRafId !== null) { cancelAnimationFrame(_moonRafId); _moonRafId = null; }
+      })
       .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
       .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
     );
@@ -541,11 +563,7 @@ async function loadGraph() {
     const n = Math.round(Math.min(Math.max(v, 0), 1) * 10);
     return "█".repeat(n) + "░".repeat(10 - n);
   };
-  const connCount = (nid) => links.filter(l => {
-    const s = typeof l.source === "object" ? l.source.id : l.source;
-    const t = typeof l.target === "object" ? l.target.id : l.target;
-    return s === nid || t === nid;
-  }).length;
+  const connCount = (nid) => adjMap.get(nid)?.size || 0;
 
   const mk = (tag, css = {}, txt = null) => {
     const el = document.createElement(tag);
@@ -628,13 +646,13 @@ async function loadGraph() {
       halo.filter(h => h.id === d.id)
         .attr("stroke-opacity", Math.min(0.95, 0.28 * br * 1.5))
         .attr("filter", "url(#nodeGlowHover)");
-      const isConn = l => {
-        const s = typeof l.source === "object" ? l.source.id : l.source;
-        const t = typeof l.target === "object" ? l.target.id : l.target;
-        return s === d.id || t === d.id;
-      };
-      link.filter(isConn).attr("stroke-opacity", 0.90).attr("filter", "url(#linkGlowHover)");
-      linkGlow.filter(isConn).attr("stroke-opacity", 0.50);
+      const connIdx = adjMap.get(d.id);
+      if (connIdx) {
+        connIdx.forEach(i => {
+          link.filter((_, j) => j === i).attr("stroke-opacity", 0.90).attr("filter", "url(#linkGlowHover)");
+          linkGlow.filter((_, j) => j === i).attr("stroke-opacity", 0.50);
+        });
+      }
       showTooltipFor(d, e);
     })
     .on("mousemove", (e, d) => showTooltipFor(d, e))
@@ -659,6 +677,12 @@ async function loadGraph() {
     .attr("dx", 12).attr("dy", 4)
     .style("pointer-events", "none");
 
+  /** G1a: 시뮬레이션 중 blur 필터 비활성화 — GPU 재계산 방지 */
+  node.attr("filter", null);
+  halo.attr("filter", null).attr("stroke-opacity", 0);
+  linkGlow.attr("stroke-opacity", 0);
+  labels.attr("display", "none");
+
   /** ── Tick ── */
   sim.on("tick", () => {
     linkGlow
@@ -670,11 +694,9 @@ async function loadGraph() {
     node.attr("cx",  d => d.x).attr("cy",  d => d.y);
     halo.attr("cx",  d => d.x).attr("cy",  d => d.y);
     labels.attr("x", d => d.x).attr("y",   d => d.y);
-    /* 고리 위치 (시뮬레이션 이동 반영) */
+    /* G4a: 고리 위치 — tick에서는 cx/cy만 (rotate는 sim.on("end")에서 1회) */
     planetData.filter(p => p._ringEl).forEach(p => {
-      p._ringEl.attr("cx", p.node.x ?? 0)
-               .attr("cy", p.node.y ?? 0)
-               .attr("transform", `rotate(${p.ringRot},${p.node.x ?? 0},${p.node.y ?? 0})`);
+      p._ringEl.attr("cx", p.node.x ?? 0).attr("cy", p.node.y ?? 0);
     });
   });
 
@@ -691,10 +713,22 @@ async function loadGraph() {
     });
     _moonRafId = requestAnimationFrame(_animateMoons);
   };
-  if (moonEntries.length > 0) _moonRafId = requestAnimationFrame(_animateMoons);
+  /** G3a: 시뮬레이션 중 위성 rAF 시작 금지 — sim.on("end")에서 시작 */
 
   /** 초기 줌: simulation 안정 후 전체 노드가 보이도록 fit */
   sim.on("end", () => {
+    /** G1b: 필터 복원 */
+    node.style("filter", d => `brightness(${nodeBrightness(d)})`);
+    halo.attr("filter", "url(#nodeGlow)")
+        .attr("stroke-opacity", d => Math.min(0.92, 0.28 * nodeBrightness(d)));
+    linkGlow.attr("stroke-opacity", 0.22);
+    labels.attr("display", null);
+
+    /** G4a: ring rotate 1회 적용 */
+    planetData.filter(p => p._ringEl).forEach(p => {
+      p._ringEl.attr("transform", `rotate(${p.ringRot},${p.node.x ?? 0},${p.node.y ?? 0})`);
+    });
+
     const bounds = g.node().getBBox();
     if (bounds.width === 0 || bounds.height === 0) return;
     const pad    = 40;
@@ -707,12 +741,27 @@ async function loadGraph() {
     const ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
     svg.transition().duration(500)
       .call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+
+    /** G3b: 시뮬레이션 완료 후 위성 애니메이션 시작 */
+    if (moonEntries.length > 0 && _moonRafId === null) {
+      _moonRafId = requestAnimationFrame(_animateMoons);
+    }
   });
 
   const statsEl = document.getElementById("graph-stats");
   if (statsEl) {
     statsEl.textContent = `${data.nodes.length} nodes, ${links.length} edges`;
   }
+
+  /** G3d: 탭 숨김 시 위성 rAF 정지 / 복귀 시 재개 */
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && _moonRafId !== null) {
+      cancelAnimationFrame(_moonRafId);
+      _moonRafId = null;
+    } else if (!document.hidden && moonEntries.length > 0 && _moonRafId === null) {
+      _moonRafId = requestAnimationFrame(_animateMoons);
+    }
+  });
 }
 
 export { renderGraph, loadGraph };

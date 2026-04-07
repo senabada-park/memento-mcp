@@ -192,6 +192,19 @@ export const MEMORY_CONFIG = {
 
 importanceWeight + recencyWeight + semanticWeight의 합은 1.0이어야 한다. halfLifeDays는 감쇠의 속도를 결정하며 staleThresholds와 독립적으로 동작한다. rrfSearch.k는 RRF 점수의 분모 안정화 상수로, 60이 일반 용도 기본값이다. gc.factDecisionPolicy는 fact/decision 유형의 고립 파편을 별도 기준으로 정리하여 검색 노이즈를 줄인다.
 
+### SearchParamAdaptor (자동 검색 파라미터 학습)
+
+SearchParamAdaptor는 별도 환경변수 없이 자동으로 동작한다. `config/memory.js`의 `semanticSearch.minSimilarity` 값을 기본값으로 사용하며, 50회 이상 검색 후 key_id x query_type x hour 조합별로 학습된 값으로 대체된다.
+
+| 하드코딩 상수 | 값 | 설명 |
+|-------------|-----|------|
+| MIN_SAMPLE | 50 | 학습 적용 최소 샘플 수 |
+| CLAMP_MIN | 0.10 | minSimilarity 하한 |
+| CLAMP_MAX | 0.60 | minSimilarity 상한 |
+| step | 0.01 | 조정 보폭 (대칭) |
+
+학습 데이터는 `agent_memory.search_param_thresholds` 테이블에 저장된다 (migration-029).
+
 ### 런타임 검증
 
 `config/validate-memory-config.js`가 서버 시작 시 `MEMORY_CONFIG`의 구조적 정합성을 1회 검증한다. 검증 실패 시 에러를 throw하여 서버 시작을 중단한다.

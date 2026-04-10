@@ -141,12 +141,21 @@ Claude.ai Web / ChatGPT 연동은 OAuth를 사용한다. 발급한 API 키(`mmcp
 | OAuth 연동 | RFC 7591 Dynamic Client Registration, Claude.ai / ChatGPT Web 통합 지원 |
 | **Workspace 격리** | 같은 키 내에서도 프로젝트·직종·클라이언트 단위로 기억을 분리. `api_keys.default_workspace`로 자동 태깅, 검색 시 자동 필터. |
 
-### Smart Recall (v2.6.0)
+### 보안 하드닝 (v2.7.0)
+
+- **RBAC default-deny**: `TOOL_PERMISSIONS` 맵에 없는 도구명은 권한과 무관하게 즉시 거부된다.
+- **테넌트 격리 강화**: forget/amend/link/fragment_history는 SQL 레벨 `key_id` 조건으로 타 테넌트 파편에 접근 불가. "없음"과 "권한 없음"을 동일 메시지로 처리하여 존재 여부 노출 방지.
+- **injectSessionContext**: 클라이언트가 전송한 `_keyId`/`_permissions` 등 내부 필드를 삭제하고 서버 인증 결과로 재주입. 세션 컨텍스트 위조 불가.
+- **Admin rate limit**: `/auth`, `/keys` POST, `/import` POST에 IP 기반 rate limit 적용.
+- **OpenAPI**: `GET /openapi.json` 엔드포인트 추가 (`ENABLE_OPENAPI=true`). master key는 전체 경로, API key는 permissions 필터 스펙 반환.
+
+### Smart Recall (v2.7.0)
 - **ProactiveRecall**: remember() 시 키워드 오버랩 기반 유사 파편 자동 링크
 - **CaseRewardBackprop**: case verification 이벤트 시 증거 파편 importance 자동 역전파
 - **SearchParamAdaptor**: 사용 패턴 기반 검색 임계값 자동 최적화
 - **CBR (Case-Based Reasoning)**: `recall(caseMode=true)` 로 유사 사례의 goal→events→outcome 흐름을 검색하여 과거 해결 패턴 재활용
-- **depth 필터**: Planner/Executor 역할별 검색 깊이 제어 (`depth: "shallow"` | `"standard"` | `"deep"`)
+- **depth 필터**: Planner/Executor 역할별 검색 깊이 제어 (`"high-level"` | `"detail"` | `"tool-level"`)
+- **recall 응답 key_id 포함**: 반환 파편마다 `key_id` 필드가 포함되어 소유 테넌트 식별 가능
 - **Reconsolidation**: `tool_feedback` 피드백 기반 fragment_links weight/confidence 실시간 강화 또는 약화 (`ENABLE_RECONSOLIDATION=true`)
 - **Spreading Activation**: `recall(contextText=...)` 전달 시 대화 맥락 기반 관련 파편 ema_activation 선제 활성화 (`ENABLE_SPREADING_ACTIVATION=true`)
 
@@ -199,7 +208,7 @@ Memento는 사실 기억(fact cache)에 최적화되어 있다. 전후관계가 
 | [Benchmark](docs/benchmark.md) | LongMemEval-S 벤치마크 상세 분석 |
 | [SKILL.md](SKILL.md) | MCP 도구 전체 레퍼런스 |
 | [INSTALL.md](docs/INSTALL.md) | 마이그레이션, 훅 설정, 상세 설치 |
-| [CHANGELOG](CHANGELOG.md) | 버전별 변경사항 |
+| [CHANGELOG](CHANGELOG.md) | 버전별 변경사항, v2.7.0 Migration Guide 포함 |
 
 ## 운영
 

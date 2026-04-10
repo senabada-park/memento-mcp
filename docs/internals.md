@@ -64,6 +64,49 @@ memory_consolidate 도구가 실행되거나 서버 내부 스케줄러(6시간 
 
 ## 세션 및 인증 내부 동작
 
+### forget/amend/link 에러 통합 패턴
+
+forget, amend, link, fragment_history 연산은 파편을 먼저 `store.getById(id, agentId, keyId, groupKeyIds)`로 조회한다. SQL 쿼리에 `key_id` 조건이 포함되므로 타 테넌트 파편은 SELECT 단계에서 이미 필터된다. 조회 결과가 null이면 파편의 실제 존재 여부와 무관하게 동일한 에러 메시지를 반환한다.
+
+| 연산 | 에러 메시지 |
+|------|------------|
+| `forget(id=...)` | `"Fragment not found or no permission"` |
+| `amend(id=...)` | `"Fragment not found or no permission"` |
+| `link(fromId=..., toId=...)` | `"One or both fragments not found or no permission"` |
+| `fragment_history(id=...)` | `"Fragment not found or no permission"` |
+
+이 패턴은 존재 여부 노출(existence oracle) 취약점을 방지한다. 공격자가 타 테넌트 파편 ID를 추측하더라도 "없음"과 "권한 없음"을 구분할 수 없다.
+
+### injectSessionContext 헬퍼
+
+`lib/handlers/mcp-handler.js`에서 export되며, SSE 핸들러(`sse-handler.js`)에서도 import하여 재사용된다.
+
+```js
+injectSessionContext(msg, { sessionId, sessionKeyId, sessionGroupKeyIds,
+                             sessionPermissions, sessionDefaultWorkspace });
+```
+
+`tools/call` 메서드에만 동작한다. 클라이언트가 직접 전송한 `_keyId`, `_groupKeyIds`, `_sessionId`, `_permissions`, `_defaultWorkspace` 필드를 먼저 삭제한 뒤, 서버 인증 결과로 재주입한다. 클라이언트가 세션 컨텍스트를 위조하는 경로를 완전히 차단한다.
+
+### AdminEsmLoadError sentinel 패턴
+
+`tests/unit/admin-test-helper.js`의 `loadAdmin()`은 `assets/admin/admin.js`를 Node.js `vm.runInContext`로 로드한다. v2.5.7에서 admin.js가 ESM 진입점(import/export 문 포함)으로 전환된 이후, vm sandbox는 ESM 문법을 지원하지 않아 SyntaxError가 발생한다.
+
+이를 명시적으로 처리하기 위해 ESM 파일 감지 시 `AdminEsmLoadError`를 throw한다. 테스트 파일은 이 에러를 catch하여 `describe.skip`으로 전환한다. 실제 에러와 sentinel을 구분하는 가드:
+
+```js
+} catch (e) {
+  if (!(e instanceof AdminEsmLoadError)) throw e;
+}
+const _describe = _adminLoaded ? describe : describe.skip;
+```
+
+admin 모듈 테스트는 향후 `assets/admin/modules/*`를 직접 import하는 방식으로 마이그레이션 예정이다.
+
+---
+
+## 세션 및 인증 내부 동작
+
 ### updateTtlTier key_id 격리
 
 `FragmentWriter.updateTtlTier`는 `keyId` 파라미터를 받아 UPDATE 쿼리에 `key_id` 조건을 추가한다. 다른 API 키가 소유한 파편의 TTL 계층을 변경하는 크로스 키 접근을 차단한다. keyId가 null이면 마스터 키 소유 파편(`key_id IS NULL`)만 대상으로 한다.

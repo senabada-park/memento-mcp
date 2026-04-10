@@ -239,6 +239,22 @@ API: `GET /memory/graph?topic=xxx&limit=50` -> `{ nodes: [...], edges: [...] }`
 
 ---
 
+## Admin API Rate Limit
+
+일부 Admin API 엔드포인트에 IP 기반 rate limit이 적용된다.
+
+| 경로 | 메서드 | Rate Limit 적용 |
+|------|--------|----------------|
+| `/v1/internal/model/nothing/auth` | POST | 적용 |
+| `/v1/internal/model/nothing/keys` | POST | 적용 |
+| `/v1/internal/model/nothing/import` | POST | 적용 |
+
+제한 초과 시 `429 Too Many Requests`와 `Retry-After` 헤더가 반환된다. 제한값은 서버의 `RATE_LIMIT_PER_IP` / `RATE_LIMIT_WINDOW_MS` 환경변수로 조정한다 (기본값: 30건/분).
+
+반복 로그인 시도, 대량 키 생성, 대규모 파편 가져오기 작업은 이 제한에 걸릴 수 있다. import 작업이 대량이라면 단일 JSON 배열로 묶어 한 번에 요청하는 것이 권장된다.
+
+---
+
 ## 일반 조작
 
 공통적으로 적용되는 조작 방법:

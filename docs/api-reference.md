@@ -15,6 +15,7 @@ MCP 도구 상세는 [SKILL.md](../SKILL.md) 참조.
 | POST | /message?sessionId= | Legacy SSE. JSON-RPC 요청 수신. 응답은 SSE 스트림으로 전달 |
 | GET | /health | 헬스 체크. DB 쿼리(SELECT 1), 세션 상태, Redis 연결을 확인하고 JSON으로 반환. `REDIS_ENABLED=false` 시 Redis는 `disabled`로 표시되며 200 반환. DB 장애 시 503 |
 | GET | /metrics | Prometheus 메트릭. prom-client가 수집한 HTTP 요청 카운터, 세션 게이지 등 |
+| GET | /openapi.json | OpenAPI 3.1.0 스펙. 인증 필수. master key는 Admin REST API 포함 전체 경로를 반환하며, API key는 해당 키의 `permissions` 배열에 맞게 도구 목록이 필터된 스펙을 반환. `ENABLE_OPENAPI=true` 환경변수로 활성화. 비활성 시 404 반환. |
 | GET | /.well-known/oauth-authorization-server | OAuth 2.0 인가 서버 메타데이터 |
 | GET | /.well-known/oauth-protected-resource | OAuth 2.0 보호 리소스 메타데이터 |
 | GET | /authorize | OAuth 2.0 인가 엔드포인트. PKCE code_challenge 필요 |
@@ -64,6 +65,16 @@ Redis가 비활성화(`REDIS_ENABLED=false`)되거나 연결 실패해도 서버
 L1 캐시와 Working Memory가 비활성화되지만 핵심 기억 저장/검색은 PostgreSQL만으로 동작합니다.
 
 인증 방식은 두 가지다. Streamable HTTP는 `initialize` 요청 시 `Authorization: Bearer <MEMENTO_ACCESS_KEY>` 헤더로 인증하며 이후 세션으로 유지된다. Legacy SSE는 `/sse?accessKey=<MEMENTO_ACCESS_KEY>` 쿼리 파라미터로 인증한다.
+
+### RBAC (Role-Based Access Control)
+
+모든 MCP 도구 호출은 RBAC 검증을 통과해야 한다.
+
+- master key (`MEMENTO_ACCESS_KEY`): `permissions=null`로 처리되며 모든 도구를 호출할 수 있다.
+- API key (`mmcp_xxx`): 키 생성 시 지정된 `permissions` 배열 기준으로 도구 접근이 제한된다. 배열에 필요한 권한이 없으면 즉시 거부된다.
+- **default-deny**: `TOOL_PERMISSIONS` 맵에 등록되지 않은 도구명은 권한과 무관하게 항상 거부된다 (`reason: "unknown_tool"`).
+- 권한 레벨은 세 가지다: `read`(recall/context/memory_stats 등), `write`(remember/forget/amend 등), `admin`(memory_consolidate/apply_update 등). `admin` 권한을 가진 키는 모든 레벨을 호출할 수 있다.
+- 타 테넌트(다른 API 키)가 소유한 파편에 forget/amend/link 요청 시 `"Fragment not found"` 에러가 반환된다. SQL 레벨에서 `key_id` 조건으로 격리되므로 존재 여부조차 노출되지 않는다.
 
 보호된 리소스에 인증 없이 접근하면 `401 Unauthorized`와 함께 `WWW-Authenticate: Bearer resource_metadata="</.well-known/oauth-protected-resource URL>"` 헤더가 반환된다.
 
@@ -217,6 +228,10 @@ API 키의 일일 호출 제한을 변경한다. 마스터 키 인증 필요.
 | agentId | string | - | 에이전트 ID |
 | minImportance | number | - | 최소 중요도 필터 (0~1). 이 값 이상의 importance를 가진 파편만 반환. |
 | isAnchor | boolean | - | true 시 앵커(고정) 파편만 반환. 핵심 지식 조회에 유용. |
+
+### 응답 파편 필드 (주요)
+
+각 반환 파편에는 `key_id` 필드가 포함된다. master key 호출 시 타 API 키 소유 파편도 반환될 수 있으며, 이 경우 `key_id` 값으로 소유 키를 식별할 수 있다. API key 호출 시에는 자신이 소유한 파편(`key_id` 일치) 또는 그룹 공유 파편만 반환된다.
 
 ### depth enum
 

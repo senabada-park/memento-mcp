@@ -141,6 +141,24 @@ See [integration guides](docs/getting-started/) for platform-specific setup.
 | OAuth Integration | RFC 7591 Dynamic Client Registration, Claude.ai Web and ChatGPT integration support |
 | **Workspace isolation** | Partition memories by project, role, or client within the same API key. Auto-tag via `api_keys.default_workspace`, auto-filter on recall. |
 
+### Security Hardening (v2.7.0)
+
+- **RBAC default-deny**: Any tool name not present in the `TOOL_PERMISSIONS` map is immediately rejected regardless of permissions.
+- **Tenant isolation hardening**: forget/amend/link/fragment_history enforce SQL-level `key_id` conditions preventing cross-tenant fragment access. "Not found" and "not authorized" return the same message to prevent existence disclosure.
+- **injectSessionContext**: Client-supplied internal fields (`_keyId`/`_permissions`, etc.) are stripped and re-injected from server-side authentication results. Session context forgery is impossible.
+- **Admin rate limit**: IP-based rate limits applied to `/auth`, `/keys` POST, and `/import` POST endpoints.
+- **OpenAPI**: `GET /openapi.json` endpoint added (`ENABLE_OPENAPI=true`). Master key receives the full spec; API keys receive a permissions-filtered spec.
+
+### Smart Recall (v2.7.0)
+- **ProactiveRecall**: Automatically links similar fragments based on keyword overlap during remember()
+- **CaseRewardBackprop**: Automatically back-propagates importance to evidence fragments on case verification events
+- **SearchParamAdaptor**: Automatically optimizes search thresholds based on usage patterns
+- **CBR (Case-Based Reasoning)**: `recall(caseMode=true)` retrieves goal->events->outcome flows from similar cases, enabling reuse of past resolution patterns
+- **depth filter**: Controls recall depth per Planner/Executor role (`"high-level"` | `"detail"` | `"tool-level"`)
+- **recall response key_id**: Each returned fragment includes a `key_id` field for tenant identification
+- **Reconsolidation**: Real-time strengthening or weakening of fragment_links weight/confidence based on `tool_feedback` signals (`ENABLE_RECONSOLIDATION=true`)
+- **Spreading Activation**: Passing `recall(contextText=...)` pre-boosts ema_activation for contextually related fragments based on conversation context (`ENABLE_SPREADING_ACTIVATION=true`)
+
 See [SKILL.md](SKILL.md) for the full list of MCP tools.
 
 ## Memory vs Rules
@@ -190,7 +208,7 @@ Memento is optimized for fact caching. When narrative context matters:
 | [Benchmark](docs/benchmark.en.md) | Full LongMemEval-S benchmark analysis |
 | [SKILL.md](SKILL.md) | Full MCP tool reference |
 | [INSTALL.md](docs/INSTALL.en.md) | Migrations, hook setup, detailed installation |
-| [CHANGELOG](CHANGELOG.md) | Version history |
+| [CHANGELOG](CHANGELOG.md) | Version history, v2.7.0 Migration Guide included |
 
 ## Operations
 

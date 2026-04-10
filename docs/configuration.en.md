@@ -9,22 +9,53 @@
 | Variable | Default | Description |
 |----------|---------|-------------|
 | PORT | 57332 | HTTP listen port |
-| MEMENTO_ACCESS_KEY | (none) | Bearer authentication key. Authentication disabled when unset |
+| MEMENTO_ACCESS_KEY | (none) | Bearer authentication key. **v2.7.0 breaking**: server rejects all requests when unset (fail-closed). To disable authentication in development, set `MEMENTO_AUTH_DISABLED=true` alongside |
+| MEMENTO_AUTH_DISABLED | false | When `true`, completely disables authentication and processes all requests with master privileges. Development/testing only. Only effective when `MEMENTO_ACCESS_KEY` is unset |
 | SESSION_TTL_MINUTES | 43200 | Session TTL (minutes). Default 30 days. Sliding window: TTL resets on every tool call |
 | LOG_DIR | ./logs | Winston log file directory |
-| ALLOWED_ORIGINS | (none) | Allowed Origins list. Comma-separated. All origins allowed when unset |
+| ALLOWED_ORIGINS | (none) | Allowed Origins list. Comma-separated. Only same-origin allowed when unset |
+| ADMIN_ALLOWED_ORIGINS | (none) | Admin console allowed Origins list. Only same-origin allowed when unset |
+| ENABLE_OPENAPI | false | When `true`, enables the `GET /openapi.json` endpoint. Returns different specs based on authentication level (master key: all paths included, API key: permission-filtered tool list) |
 | RATE_LIMIT_WINDOW_MS | 60000 | Rate limiting window size (ms) |
 | RATE_LIMIT_MAX_REQUESTS | 120 | Max requests per IP per window |
 | RATE_LIMIT_PER_IP | 30 | Per-IP requests per minute (unauthenticated) |
 | RATE_LIMIT_PER_KEY | 100 | Per-API-key requests per minute (authenticated) |
 | CONSOLIDATE_INTERVAL_MS | 21600000 | Auto-maintenance (consolidate) interval (ms). Default 6 hours |
 | EVALUATOR_MAX_QUEUE | 100 | MemoryEvaluator queue size cap (older jobs dropped on overflow) |
-| OAUTH_ALLOWED_REDIRECT_URIS | (none) | OAuth redirect_uri allowed prefixes (comma-separated). Above 3 URIs allowed by default when env var is not set: `https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/aip/g/oauth/callback`, `https://platform.openai.com/oauth/callback` |
-| RERANKER_MODEL | minilm | ONNX model for in-process reranking. `minilm` (default, ~80MB, English-only) or `bge-m3` (~280MB, multilingual including Korean) |
+| OAUTH_TRUSTED_ORIGINS | (none) | Additional OAuth redirect_uri trusted domains (comma-separated, origin level). Added on top of default trusted domains (claude.ai, chatgpt.com, platform.openai.com, copilot.microsoft.com, gemini.google.com). Only specify additional origins to allow |
+| OAUTH_ALLOWED_REDIRECT_URIS | (none) | OAuth redirect_uri exact-match allowed list (comma-separated). Operates independently of OAUTH_TRUSTED_ORIGINS |
+| DEFAULT_DAILY_LIMIT | 10000 | Default daily call limit when creating API keys |
+| DEFAULT_PERMISSIONS | read,write | Default permissions when creating API keys |
+| DEFAULT_FRAGMENT_LIMIT | (none) | Default fragment quota when creating API keys. Unlimited when unset |
+| DEDUP_BATCH_SIZE | 100 | Semantic deduplication batch size |
+| DEDUP_MIN_FRAGMENTS | 5 | Minimum fragment count for dedup. Deduplication is skipped below this threshold |
+| COMPRESS_AGE_DAYS | 30 | Memory compression target inactive days |
+| COMPRESS_MIN_GROUP | 3 | Minimum compression group size. Groups below this threshold are not compressed |
+| RERANKER_ENABLED | false | Enable cross-encoder reranking. When true, recall results are re-ranked by cross-encoder |
+| RERANKER_MODEL | minilm | ONNX model for in-process reranking. `minilm` (default, ~80MB, English-only) or `bge-m3` (~280MB, multilingual). **Non-English users should use `bge-m3`** -- minilm is trained on English MS MARCO dataset only, resulting in degraded re-ranking quality for non-English fragments |
 | FRAGMENT_DEFAULT_LIMIT | 5000 | Default fragment quota for new API keys (default: 5000, NULL=unlimited) |
 | ENABLE_RECONSOLIDATION | false | Enable ReconsolidationEngine. When true, tool_feedback and contradicts detection dynamically update fragment_links weight/confidence |
 | ENABLE_SPREADING_ACTIVATION | false | Enable SpreadingActivation. When true, the contextText parameter in recall proactively activates related fragments. Recommended to measure latency impact before enabling |
 | ENABLE_PATTERN_ABSTRACTION | false | Enable pattern abstraction. Planned for activation after sufficient data accumulation (not yet implemented) |
+
+#### OAuth Token TTL
+
+OAuth token TTLs are linked to the session TTL.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| OAUTH_TOKEN_TTL_SECONDS | 2592000 | OAuth access token TTL (seconds). Calculated as `SESSION_TTL_MINUTES * 60`. Default 30 days |
+| OAUTH_REFRESH_TTL_SECONDS | 5184000 | OAuth refresh token TTL (seconds). `OAUTH_TOKEN_TTL_SECONDS * 2`. Default 60 days |
+
+Sliding window: each time an OAuth-authenticated request arrives, the Redis TTL for that access token is reset to `OAUTH_TOKEN_TTL_SECONDS`. The token never expires as long as tools continue to be used.
+
+#### SSE Connection
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| SSE_HEARTBEAT_INTERVAL_MS | 25000 | SSE heartbeat ping interval (ms). Used to verify client connection is alive |
+| SSE_MAX_HEARTBEAT_FAILURES | 3 | Consecutive heartbeat send failure tolerance. Session is automatically terminated when exceeded. Detects write backpressure and network errors |
+| SSE_RETRY_MS | 5000 | SSE reconnection wait time (ms). Sent to client via the `retry:` field |
 
 ### PostgreSQL
 
@@ -171,6 +202,31 @@ export const MEMORY_CONFIG = {
 ```
 
 The sum of importanceWeight + recencyWeight + semanticWeight must equal 1.0. halfLifeDays determines decay speed and operates independently of staleThresholds. rrfSearch.k is the RRF denominator stabilization constant, with 60 as the general-purpose default. gc.factDecisionPolicy cleans up orphan fact/decision fragments under separate criteria to reduce search noise.
+
+### SearchParamAdaptor (Automatic Search Parameter Learning)
+
+SearchParamAdaptor operates automatically without any separate environment variables. It uses the `semanticSearch.minSimilarity` value from `config/memory.js` as the default. After 50 or more searches, the learned value per key_id x query_type x hour combination replaces the default.
+
+| Hardcoded Constant | Value | Description |
+|--------------------|-------|-------------|
+| MIN_SAMPLE | 50 | Minimum sample count before learned values are applied |
+| CLAMP_MIN | 0.10 | minSimilarity lower bound |
+| CLAMP_MAX | 0.60 | minSimilarity upper bound |
+| step | 0.01 | Adjustment step size (symmetric) |
+
+Learned data is stored in the `agent_memory.search_param_thresholds` table (migration-029).
+
+### Runtime Validation
+
+`config/validate-memory-config.js` validates the structural integrity of `MEMORY_CONFIG` once at server startup. On validation failure, it throws an error and halts server startup.
+
+Validated items:
+- `ranking` weights (importanceWeight + recencyWeight + semanticWeight) sum = 1.0
+- `contextInjection.rankWeights` sum = 1.0
+- `semanticSearch.minSimilarity`, `morphemeIndex.minSimilarity`, `gc.utilityThreshold` are in the 0-1 range
+- All `halfLifeDays` entries are positive
+- `gc.gracePeriodDays` < `gc.inactiveDays`
+- `embeddingWorker.batchSize`, `embeddingWorker.intervalMs`, `pagination.defaultPageSize`, `pagination.maxPageSize`, `gc.maxDeletePerCycle` are positive integers
 
 ---
 
@@ -483,6 +539,44 @@ EMBEDDING_DIMENSIONS=768
 | Mistral mistral-embed | 1024 | Code replacement | None |
 | Jina jina-embeddings-v3 | 1024 | Code replacement | Yes (1M/month) |
 | Nomic nomic-embed-text-v1.5 | 768 | Code replacement | Yes (1M/month) |
+
+---
+
+## Migrations
+
+Run `npm run migrate` to execute unapplied migrations in order. History is managed in the `schema_migrations` table, and already-applied migrations are skipped.
+
+| Number | File | Description |
+|--------|------|-------------|
+| 001 | migration-001-temporal.sql | Temporal (valid_from/valid_to, searchAsOf) |
+| 002 | migration-002-decay.sql | Exponential decay (last_decay_at) |
+| 003 | migration-003-api-keys.sql | api_keys + api_key_usage tables |
+| 004 | migration-004-key-id.sql | fragments.key_id column + FK |
+| 005 | migration-005-gc-columns.sql | GC columns |
+| 006 | migration-006-superseded.sql | superseded_by constraint |
+| 007 | migration-007-link-weight.sql | link weight |
+| 008 | migration-008-morpheme.sql | Morpheme dictionary |
+| 009 | migration-009-co-retrieved.sql | co_retrieved |
+| 010 | migration-010-ema.sql | EMA activation score |
+| 011 | migration-011-key-groups.sql | Key groups (per-group fragment sharing) |
+| 012 | migration-012-quality-verified.sql | quality_verified |
+| 013 | migration-013-search-events.sql | search_events table |
+| 014 | migration-014-ttl.sql | TTL short-lived tier |
+| 015 | migration-015-created-at-index.sql | created_at index |
+| 016 | migration-016-agent-topic-index.sql | agent/topic index |
+| 017 | migration-017-episodic.sql | episodic type (1000 chars, context_summary, session_id) |
+| 018 | migration-018-fragment-quota.sql | Fragment quota (default 5000) |
+| 019 | migration-019-hnsw.sql | HNSW ef_construction 64->128, ef_search=80 |
+| 020 | migration-020-search-latency.sql | search_events layer latency columns |
+| 021 | migration-021-oauth.sql | OAuth clients table |
+| 022 | migration-022-temporal-link-check.sql | Temporal link type CHECK constraint |
+| 023 | migration-023-link-weight-real.sql | fragment_links.weight integer->real |
+| 024 | migration-024-workspace.sql | fragments.workspace VARCHAR(255) NULL |
+| 025 | migration-025-case-columns.sql | fragments case_id + structured episode columns |
+| 026 | migration-026-case-events.sql | case_events + case_event_edges + fragment_evidence tables |
+| 028 | migration-028-composite-indexes.sql | Composite indexes: (agent_id, topic, created_at DESC) for topic fallback search optimization, (key_id, agent_id, importance DESC) WHERE valid_to IS NULL for API key isolation query optimization. Replaces migration-016's idx_frag_agent_topic |
+| 030 | migration-030-search-param-thresholds-key-text.sql | search_param_thresholds.key_id type INTEGER->TEXT conversion. Fixes bug where SearchParamAdaptor adaptive learning was broken after fragments.key_id changed to TEXT(UUID) in migration-027. Preserves existing sentinel -1 as '-1' string |
+| 031 | migration-031-content-hash-per-key.sql | Drops global UNIQUE index (idx_frag_hash) on content_hash, replaces with 2 partial unique indexes to block cross-tenant ON CONFLICT paths. Master-only (key_id IS NULL) `uq_frag_hash_master`, API key (key_id IS NOT NULL) composite `uq_frag_hash_per_key` |
 
 ---
 

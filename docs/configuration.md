@@ -40,15 +40,22 @@
 
 #### OAuth 토큰 TTL
 
-v2.7.0부터 OAuth 액세스 토큰과 리프레시 토큰 TTL을 독립 환경변수로 제어할 수 있다. `OAUTH_TOKEN_TTL_SECONDS`는 deprecated이며 `OAUTH_ACCESS_TTL_SECONDS`로 마이그레이션해야 한다.
+OAuth 토큰 TTL은 세션 TTL과 연동된다.
 
 | 환경변수 | 기본값 | 설명 |
 |----------|--------|------|
-| OAUTH_ACCESS_TTL_SECONDS | 3600 | OAuth 액세스 토큰 TTL (초). 기본값 1시간 |
-| OAUTH_REFRESH_TTL_SECONDS | 604800 | OAuth 리프레시 토큰 TTL (초). 기본값 7일 |
-| ~~OAUTH_TOKEN_TTL_SECONDS~~ | deprecated | `OAUTH_ACCESS_TTL_SECONDS`의 하위 호환 alias. 동일값으로 동작하나 신규 설정에는 `OAUTH_ACCESS_TTL_SECONDS` 사용 권장 |
+| OAUTH_TOKEN_TTL_SECONDS | 2592000 | OAuth 액세스 토큰 TTL (초). `SESSION_TTL_MINUTES * 60`으로 산출. 기본값 30일 |
+| OAUTH_REFRESH_TTL_SECONDS | 5184000 | OAuth 리프레시 토큰 TTL (초). `OAUTH_TOKEN_TTL_SECONDS * 2`. 기본값 60일 |
 
-슬라이딩 윈도우: OAuth 인증된 요청이 들어올 때마다 해당 액세스 토큰의 Redis TTL을 `OAUTH_ACCESS_TTL_SECONDS`로 재설정한다. 도구를 계속 사용하는 한 토큰이 만료되지 않는다.
+슬라이딩 윈도우: OAuth 인증된 요청이 들어올 때마다 해당 액세스 토큰의 Redis TTL을 `OAUTH_TOKEN_TTL_SECONDS`로 재설정한다. 도구를 계속 사용하는 한 토큰이 만료되지 않는다.
+
+#### SSE 연결
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| SSE_HEARTBEAT_INTERVAL_MS | 25000 | SSE heartbeat ping 전송 간격 (ms). 클라이언트 연결 유지 확인용 |
+| SSE_MAX_HEARTBEAT_FAILURES | 3 | 연속 heartbeat 전송 실패 허용 횟수. 초과 시 세션 자동 종료. write backpressure 및 네트워크 오류 감지 |
+| SSE_RETRY_MS | 5000 | SSE 재연결 대기 시간 (ms). 클라이언트 `retry:` 필드로 전달 |
 
 ### PostgreSQL
 

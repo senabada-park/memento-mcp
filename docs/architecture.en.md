@@ -23,10 +23,16 @@ server.js  (HTTP server)
     +-- lib/tool-registry.js  18 memory tool registration and routing
     |
     +-- lib/memory/
-            +-- MemoryManager.js          Business logic facade (singleton)
+            +-- MemoryManager.js          Business logic orchestration layer (904 lines, singleton). Entry point for remember/recall/forget/amend. Actual logic delegated to Processor/Builder below
+            +-- ContextBuilder.js         Dedicated context() logic. Assembles Core/Working/Anchor Memory composite context
+            +-- ReflectProcessor.js       Dedicated reflect() logic. summary->fragment conversion, episode creation, Working Memory cleanup
+            +-- BatchRememberProcessor.js Dedicated batchRemember() logic. Phase A (validation) -> B (INSERT) -> C (post-processing) 3-stage
+            +-- QuotaChecker.js           API key fragment quota check (fragment_limit based)
+            +-- RememberPostProcessor.js  remember() post-processing pipeline (embedding/morpheme/linking/assertion/temporal linking/evaluation queue/ProactiveRecall)
+            +-- EmbeddingCache.js         Query embedding Redis cache (emb:q:{sha256} key, 1-hour TTL, fault-isolated)
             +-- FragmentFactory.js        Fragment creation, validation, PII masking
             +-- FragmentStore.js          PostgreSQL CRUD facade (delegates to FragmentReader + FragmentWriter)
-            +-- FragmentReader.js         Fragment reads (getById, getByIds, getHistory, searchByKeywords, searchBySemantic)
+            +-- FragmentReader.js         Fragment reads. `getById(id, agentId, keyId, groupKeyIds)` -- v2.7.0: groupKeyIds parameter added for single-call lookup of fragments belonging to same-group keys. `getByIds`, `getHistory`, `searchByKeywords`, `searchBySemantic`
             +-- FragmentWriter.js         Fragment writes (insert, update, delete, incrementAccess, touchLinked)
             +-- FragmentSearch.js         3-layer search orchestration (structural: L1->L2, semantic: L1->L2||L3 RRF merge)
             +-- FragmentIndex.js          Redis L1 index management, getFragmentIndex() singleton factory
@@ -80,10 +86,16 @@ server.js  (HTTP server)
             +-- EpisodeContinuityService.js Inserts case_events milestone_reached + preceded_by edge after reflect() (idempotency_key-based dedup)
             +-- SpreadingActivation.js    Async activation propagation based on contextText (ACT-R model, keywords GIN seed → 1-hop graph spread, 10-min TTL cache)
             +-- CaseEventStore.js         Semantic milestone log (case_events CRUD, DAG edges, evidence join)
+            +-- CaseRewardBackprop.js     case verification event -> evidence fragment importance atomic backpropagation (64 lines)
+            +-- SearchParamAdaptor.js     key_id x query_type x hour minSimilarity online learning, atomic UPSERT (116 lines)
             +-- HistoryReconstructor.js   case_id/entity-based narrative reconstruction (ordered_timeline, causal_chains, unresolved_branches)
             +-- migration-025-case-id-episode.sql      fragments narrative reconstruction columns (case_id, goal, outcome, phase, resolution_status, assertion_status)
             +-- migration-026-case-events.sql          case_events + case_event_edges + fragment_evidence tables (Narrative Reconstruction Phase 3)
             +-- migration-027-v25-reconsolidation-episode-spreading.sql  search_events/case_events key_id type fix, fragment_links reconsolidation columns + link_reconsolidations table, case_events idempotency_key, fragments.keywords GIN index
+            +-- migration-028-composite-indexes.sql  (agent_id, topic, created_at DESC) composite index + (key_id, agent_id, importance DESC) partial index (QuotaChecker/FragmentReader optimization)
+            +-- migration-029-search-param-thresholds.sql  search_param_thresholds table (SearchParamAdaptor online learning store, key_id NOT NULL DEFAULT -1)
+            +-- migration-030-search-param-thresholds-key-text.sql  search_param_thresholds.key_id INTEGER->TEXT conversion (unified with fragments.key_id TEXT type, sentinel -1 -> '-1')
+            +-- migration-031-content-hash-per-key.sql  Global content_hash UNIQUE index replaced with 2 partial unique indexes (cross-tenant ON CONFLICT block): uq_frag_hash_master (key_id IS NULL), uq_frag_hash_per_key (key_id IS NOT NULL, composite)
 ```
 
 Supporting modules:

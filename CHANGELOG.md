@@ -13,7 +13,7 @@
 - **GraphLinker/ContradictionDetector key_id 격리**: supersession/contradiction 쿼리에 cross-tenant 차단. (92589ad, aa48a24)
 - **LinkStore/CaseEventStore/RememberPostProcessor key_id 필터**: traversal·소유권·증거 쿼리 격리. (9260ff2, fd8dbdc, bde6341)
 - **GraphNeighborSearch**: `key_id IS NULL` master 노출 제거 + `::int[]` → `::text[]` 타입 수정. (1981331)
-- **OAuth access token TTL 분리**: `OAUTH_ACCESS_TTL_SECONDS` (기본 3600) + `OAUTH_REFRESH_TTL_SECONDS` (기본 604800). 세션 TTL과 독립. (24d38ce)
+- **OAuth access token TTL**: `OAUTH_TOKEN_TTL_SECONDS` (기본 2592000 = SESSION_TTL_MINUTES*60, 30일) + `OAUTH_REFRESH_TTL_SECONDS` (기본 5184000, 60일). 세션 TTL과 연동. (24d38ce)
 - **OAuth/Admin rate limit**: `/register`, `/token`, `/authorize`, `/admin/auth`, `/admin/keys`, `/admin/import`에 IP 기반 rate limit + body cap 적용. (fe009cd)
 - **TemporalLinker groupKeyIds 수용**: cross-tenant temporal 링크 생성 차단. (2780860)
 
@@ -31,13 +31,19 @@
 - **remember/reflect 스키마 강화**: 자기완결성 5대 기준(대명사 해소, 구체 엔티티/수치, 메타 금지, 원자성, 인과 결합 예외) + 6개월 판단 테스트. (eadcca1)
 - **거부 경로 Prometheus 카운터 4종**: `memento_auth_denied_total`, `memento_cors_denied_total`, `memento_rbac_denied_total`, `memento_tenant_isolation_blocked_total`. (a35d185)
 - **Winston 로그 redactor**: Authorization/API 키/세션 토큰/OAuth 코드/content 마스킹. (f589536)
+- **SSE 연결 안정성 강화**:
+  - Heartbeat failure detection: `SSE_MAX_HEARTBEAT_FAILURES`(기본 3) 연속 실패 시 세션 자동 종료. write backpressure 및 예외 감지
+  - Proxy 호환성: `X-Accel-Buffering: no` 헤더로 nginx/reverse proxy SSE 버퍼링 방지
+  - `sseWrite()` atomic write + boolean 반환으로 write 실패 graceful 처리
+  - Server socket tuning: `keepAliveTimeout=0`, `headersTimeout=0`, TCP keep-alive 60s, `TCP_NODELAY`
+  - 환경변수: `SSE_HEARTBEAT_INTERVAL_MS`(25000), `SSE_MAX_HEARTBEAT_FAILURES`(3), `SSE_RETRY_MS`(5000)
 
 ### Migration Guide (v2.6.0 → v2.7.0)
 - `MEMENTO_ACCESS_KEY` 필수 — 미설정 시 서버 기동 거부. 개발용: `MEMENTO_AUTH_DISABLED=true`
 - `ALLOWED_ORIGINS` 미설정 시 same-origin만 허용. 기존 cross-origin 클라이언트는 명시적 설정 필요
 - OAuth 기존 토큰은 최대 30일 TTL까지 유효. 갱신 시 consent 화면 1회 경유
 - `npm run migrate` 실행: migration-030 (search_param_thresholds 타입), migration-031 (content_hash 격리)
-- `OAUTH_ACCESS_TTL_SECONDS` (기본 3600) / `OAUTH_REFRESH_TTL_SECONDS` (기본 604800) 환경변수 신규
+- `OAUTH_TOKEN_TTL_SECONDS` (기본 2592000, SESSION_TTL_MINUTES*60) / `OAUTH_REFRESH_TTL_SECONDS` (기본 5184000) 환경변수
 
 ## [2.6.0] - 2026-04-07
 

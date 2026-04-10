@@ -1,5 +1,25 @@
 # Internals
 
+## MemoryManager (Orchestration Layer)
+
+In v2.5.2, MemoryManager was reduced from 1,790 lines to 904 lines, and as of v2.6.0 it is at 1,051 lines with CBR/depth filter additions. It functions as the orchestration layer between tool handlers and sub-modules. Core logic for each operation is delegated to dedicated modules, while MemoryManager handles only dependency injection and method routing.
+
+**Decomposed modules:**
+
+| Module | Delegated to | Role |
+|--------|-------------|------|
+| `ContextBuilder` | `context()` | Core/Working/Anchor Memory composition, rankedInjection, context hint generation |
+| `ReflectProcessor` | `reflect()` | summary/decisions/errors_resolved/new_procedures/open_questions fragment conversion and storage, episode creation, Working Memory cleanup |
+| `BatchRememberProcessor` | `batchRemember()` | Phase A (validation) → Phase B (transactional INSERT) → Phase C (post-processing) 3-stage batch storage |
+| `QuotaChecker` | `remember()` entry | Per-API-key fragment quota (fragment_limit) check |
+| `RememberPostProcessor` | After `remember()` completes | Embedding generation, morpheme indexing, auto-linking, assertion check, temporal linking, evaluation queue enqueue, ProactiveRecall pipeline. ProactiveRecall logic included -- creates automatic `related_to` links with fragments sharing keyword overlap (>=50%) on remember() |
+
+**Delegation pattern:** Each module receives required dependencies (store, index, factory, bound methods, etc.) through its constructor. MemoryManager binds self-referencing methods in its constructor (`this.recall.bind(this)`, `this.remember.bind(this)`) and passes them, so modules never back-reference MemoryManager.
+
+**reflect resolution_status auto-setting:** ReflectProcessor automatically assigns resolution_status to reflect-generated fragments. `errors_resolved` items receive `resolutionStatus: "resolved"`, and `open_questions` items receive `resolutionStatus: "open"`. All reflect-generated fragments also propagate `sessionId` for session-level tracking.
+
+---
+
 ## MemoryEvaluator
 
 When the server starts, the MemoryEvaluator worker runs in the background. It is a singleton started via `getMemoryEvaluator().start()`. On SIGTERM/SIGINT, it stops as part of the graceful shutdown flow.
@@ -36,9 +56,52 @@ An 18-step maintenance pipeline that runs when the memory_consolidate tool is in
 - **Decay application (EMA dynamic half-life)**: Applies exponential decay to all fragments via PostgreSQL `POWER()` batch SQL. Fragments with high `ema_activation` get their half-life extended up to 2x (`computeDynamicHalfLife`). Formula: `importance * 2^(-dt / (halfLife * clamp(1 + ema * 0.5, 1, 2)))`
 - **EMA batch decay**: Periodically reduces ema_activation of long-unaccessed fragments. 60+ days unaccessed -> ema_activation=0 (reset), 30-60 days unaccessed -> ema_activation*0.5 (halved). is_anchor=true fragments excluded. Prevents long-idle fragments from retaining past boost values despite no search exposure
 
+### compressOldFragments (KNN Batch Parallelization)
+
+`ConsolidatorGC.compressOldFragments()` groups long-unaccessed, low-importance fragments by topic, then forms similarity groups via KNN (cosine >= 0.80) and compresses them into representative fragments. In v2.5.2, the KNN neighbor lookup was converted from sequential N+1 queries to `BATCH_SIZE=20` unit `Promise.all` parallelism. Within each batch, pgvector KNN queries for each fragment execute concurrently, significantly reducing processing time compared to linear execution as the number of target fragments grows. Individual query failures are isolated via `.catch(() => ({ rows: [] }))` so they do not block the entire batch.
+
 ---
 
 ## Session and Authentication Internals
+
+### forget/amend/link Error Unification Pattern
+
+The forget, amend, link, and fragment_history operations first look up the fragment via `store.getById(id, agentId, keyId, groupKeyIds)`. The SQL query includes a `key_id` condition, so other tenants' fragments are filtered out at the SELECT stage. When the result is null, the same error message is returned regardless of whether the fragment actually exists.
+
+| Operation | Error message |
+|-----------|--------------|
+| `forget(id=...)` | `"Fragment not found or no permission"` |
+| `amend(id=...)` | `"Fragment not found or no permission"` |
+| `link(fromId=..., toId=...)` | `"One or both fragments not found or no permission"` |
+| `fragment_history(id=...)` | `"Fragment not found or no permission"` |
+
+This pattern prevents existence oracle vulnerabilities. Even if an attacker guesses another tenant's fragment ID, they cannot distinguish between "not found" and "no permission".
+
+### injectSessionContext Helper
+
+Exported from `lib/handlers/mcp-handler.js` and also imported for reuse in the SSE handler (`sse-handler.js`).
+
+```js
+injectSessionContext(msg, { sessionId, sessionKeyId, sessionGroupKeyIds,
+                             sessionPermissions, sessionDefaultWorkspace });
+```
+
+Only operates on the `tools/call` method. First deletes client-sent `_keyId`, `_groupKeyIds`, `_sessionId`, `_permissions`, `_defaultWorkspace` fields, then re-injects them with the server's authentication result. This completely blocks any path for clients to forge session context.
+
+### AdminEsmLoadError Sentinel Pattern
+
+`tests/unit/admin-test-helper.js`'s `loadAdmin()` loads `assets/admin/admin.js` via Node.js `vm.runInContext`. After admin.js was converted to an ESM entry point (with import/export statements) in v2.5.7, the vm sandbox throws a SyntaxError because it does not support ESM syntax.
+
+To handle this explicitly, `AdminEsmLoadError` is thrown when an ESM file is detected. Test files catch this error and switch to `describe.skip`. The guard distinguishing real errors from the sentinel:
+
+```js
+} catch (e) {
+  if (!(e instanceof AdminEsmLoadError)) throw e;
+}
+const _describe = _adminLoaded ? describe : describe.skip;
+```
+
+Admin module tests are planned to migrate to directly importing `assets/admin/modules/*` in the future.
 
 ### updateTtlTier key_id Isolation
 
@@ -73,6 +136,20 @@ When refreshing a token via `POST /token` with `grant_type=refresh_token`, the `
 ### SESSION_TTL Default Change
 
 The default value of the `SESSION_TTL` environment variable changed from 240 to 43200 minutes (30 days). Sessions use a sliding window — the TTL is extended on every tool use, so sessions expire only after 30 days of inactivity. Actively used sessions effectively never expire.
+
+---
+
+## EmbeddingCache (Query Embedding Cache)
+
+Caches query text embedding vectors in Redis within `FragmentSearch._searchL3()` to reduce latency on repeated searches.
+
+**Key pattern:** `emb:q:{first 16 chars of SHA-256}`. Identical query text always maps to the same key.
+
+**Value format:** `Float32Array` is binary-serialized to `Buffer` for storage. On retrieval, it is deserialized back to `number[]`.
+
+**TTL:** Default 3600 seconds (1 hour). Adjustable via the constructor's `ttlSeconds` option.
+
+**Fault isolation:** All Redis calls are wrapped in try-catch, returning null/ignored on failure. Cache failures do not block the search flow. When Redis is not configured (status === "stub"), it always operates as a cache miss.
 
 ---
 

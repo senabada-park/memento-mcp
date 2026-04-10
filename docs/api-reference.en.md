@@ -15,6 +15,7 @@ For MCP tool details, see [SKILL.md](../SKILL.md).
 | POST | /message?sessionId= | Legacy SSE. JSON-RPC request receiver. Responses delivered via SSE stream |
 | GET | /health | Health check. Verifies DB query (SELECT 1), session state, and Redis connection, returning JSON. When `REDIS_ENABLED=false`, Redis shows as `disabled` with 200 returned. DB failure returns 503 |
 | GET | /metrics | Prometheus metrics. HTTP request counters, session gauges, etc. collected by prom-client |
+| GET | /openapi.json | OpenAPI 3.1.0 spec. Authentication required. Master key returns full paths including Admin REST API; API key returns a spec filtered to tools matching the key's `permissions` array. Enabled via `ENABLE_OPENAPI=true` env var. Returns 404 when disabled. |
 | GET | /.well-known/oauth-authorization-server | OAuth 2.0 authorization server metadata |
 | GET | /.well-known/oauth-protected-resource | OAuth 2.0 protected resource metadata |
 | GET | /authorize | OAuth 2.0 authorization endpoint. PKCE code_challenge required |
@@ -28,6 +29,7 @@ For MCP tool details, see [SKILL.md](../SKILL.md).
 | POST | /v1/internal/model/nothing/keys | Create API key. Raw key returned in response exactly once |
 | PUT | /v1/internal/model/nothing/keys/:id | Change API key status (active <-> inactive) |
 | PUT | /v1/internal/model/nothing/keys/:id/daily-limit | Change API key daily call limit. Master key required |
+| PATCH | /v1/internal/model/nothing/keys/:id/workspace | Change API key's default_workspace. `{ workspace: "name" }` or `{ workspace: null }` (null=unset) |
 | DELETE | /v1/internal/model/nothing/keys/:id | Delete API key |
 | GET | /v1/internal/model/nothing/groups | Key group list |
 | POST | /v1/internal/model/nothing/groups | Create key group |
@@ -37,7 +39,7 @@ For MCP tool details, see [SKILL.md](../SKILL.md).
 | DELETE | /v1/internal/model/nothing/groups/:gid/members/:kid | Remove key from group |
 | GET | /v1/internal/model/nothing/memory/overview | Memory overview (type/topic distribution, quality unverified, superseded, recent activity) |
 | GET | /v1/internal/model/nothing/memory/search-events?days=N | Search event analysis (total searches, failed queries, feedback stats) |
-| GET | /v1/internal/model/nothing/memory/fragments | Fragment search/filter (topic, type, key_id, page, limit) |
+| GET | /v1/internal/model/nothing/memory/fragments | Fragment search/filter (topic, type, key_id, workspace, page, limit) |
 | GET | /v1/internal/model/nothing/memory/anomalies | Anomaly detection results |
 | GET | /v1/internal/model/nothing/sessions | Session list (activity enrichment, unreflected session count) |
 | GET | /v1/internal/model/nothing/sessions/:id | Session detail (search events, tool feedback) |
@@ -62,6 +64,16 @@ For MCP tool details, see [SKILL.md](../SKILL.md).
 Even when Redis is disabled (`REDIS_ENABLED=false`) or connection fails, the server returns healthy (200). L1 cache and Working Memory are deactivated, but core memory storage/retrieval operates fully on PostgreSQL alone.
 
 Two authentication methods are available. Streamable HTTP authenticates via `Authorization: Bearer <MEMENTO_ACCESS_KEY>` header on the `initialize` request, then maintains the session. Legacy SSE authenticates via `/sse?accessKey=<MEMENTO_ACCESS_KEY>` query parameter.
+
+### RBAC (Role-Based Access Control)
+
+All MCP tool calls must pass RBAC validation.
+
+- Master key (`MEMENTO_ACCESS_KEY`): treated as `permissions=null`, granting access to all tools.
+- API key (`mmcp_xxx`): tool access is restricted based on the `permissions` array specified at key creation time. Requests for tools not included in the array are immediately denied.
+- **default-deny**: tool names not registered in the `TOOL_PERMISSIONS` map are always denied regardless of permissions (`reason: "unknown_tool"`).
+- Three permission levels exist: `read` (recall/context/memory_stats etc.), `write` (remember/forget/amend etc.), `admin` (memory_consolidate/apply_update etc.). A key with `admin` permission can invoke tools at all levels.
+- When a forget/amend/link request targets a fragment owned by another tenant (different API key), a `"Fragment not found"` error is returned. Isolation is enforced at the SQL level via `key_id` conditions, so the fragment's existence is never exposed.
 
 Accessing a protected resource without authentication returns `401 Unauthorized` with a `WWW-Authenticate: Bearer resource_metadata="</.well-known/oauth-protected-resource URL>"` header.
 

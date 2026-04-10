@@ -105,7 +105,7 @@ server.js  (HTTP 서버)
 
 ```
 lib/
-├── config.js          환경변수를 상수로 노출. AUTH_DISABLED(MEMENTO_AUTH_DISABLED), OAUTH_ACCESS_TTL_SECONDS, OAUTH_REFRESH_TTL_SECONDS, ENABLE_OPENAPI 포함
+├── config.js          환경변수를 상수로 노출. AUTH_DISABLED(MEMENTO_AUTH_DISABLED), OAUTH_TOKEN_TTL_SECONDS, OAUTH_REFRESH_TTL_SECONDS, ENABLE_OPENAPI, SSE_HEARTBEAT_INTERVAL_MS 포함
 ├── auth.js            Bearer 토큰 검증. `resolveAuthConfig(accessKey, authDisabled)` — 인증 설정 해석 순수 함수. `buildAuthDecision(accessKey, authDisabled, bearerToken)` — fail-closed 진입부 및 master 키 직접 비교 순수 함수 (OAuth/DB API 키 검증 제외)
 ├── oauth.js           OAuth 2.0 PKCE 인가/토큰 처리
 ├── sessions.js        Streamable/Legacy SSE 세션 생명주기
@@ -198,6 +198,37 @@ scripts/
 ```
 
 `config/memory.js`는 별도 파일로 분리된 기억 시스템 설정이다. 시간-의미 복합 랭킹 가중치, stale 임계값, 임베딩 워커, 컨텍스트 주입, 페이지네이션, GC 정책을 담는다. `config/validate-memory-config.js`는 서버 시작 시 1회 호출되어 MEMORY_CONFIG의 가중치 합계, 범위, 타입 제약을 런타임 검증한다. 실패 시 프로세스 시작을 중단한다.
+
+---
+
+## SSE Transport 안정성
+
+### Heartbeat Supervision
+
+SSE 스트림은 주기적 heartbeat(`: ping\n\n`)으로 연결 상태를 감시한다.
+
+- `SSE_HEARTBEAT_INTERVAL_MS`(기본 25s) 간격으로 ping 전송
+- `res.write()` 반환값으로 backpressure 감지 (false = 커널 버퍼 가득 참)
+- 연속 `SSE_MAX_HEARTBEAT_FAILURES`(기본 3)회 실패 시 세션 자동 종료
+- 성공 시 failure counter 리셋
+
+### Proxy 호환성
+
+- `X-Accel-Buffering: no` 헤더: nginx reverse proxy의 SSE 응답 버퍼링 방지
+- Legacy SSE 핸들러: `res.flushHeaders()` 즉시 헤더 전송
+
+### Socket Tuning
+
+- `keepAliveTimeout=0`, `headersTimeout=0`, `requestTimeout=0`: 서버 레벨 타임아웃 비활성화 (장시간 SSE 연결 보호)
+- `socket.setKeepAlive(true, 60000)`: TCP keep-alive 60s idle 타임아웃
+- `socket.setNoDelay(true)`: TCP_NODELAY로 패킷 지연 최소화
+
+### sseWrite Atomic Write
+
+`sseWrite(res, event, data)` (`lib/http/helpers.js`):
+- `res.destroyed` / `!res.writable` 사전 검사
+- event + data를 단일 `res.write()` 호출로 원자적 전송
+- boolean 반환 (true=성공, false=실패)
 
 ---
 

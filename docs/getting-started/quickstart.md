@@ -2,7 +2,7 @@
 title: "Quick Start"
 date: 2026-03-13
 author: 최진호
-updated: 2026-03-13
+updated: 2026-04-10
 ---
 
 # Quick Start
@@ -42,6 +42,8 @@ POSTGRES_PASSWORD=change-me
 DATABASE_URL=postgresql://postgres:change-me@localhost:5432/memento
 MEMENTO_ACCESS_KEY=change-me
 ```
+
+> v2.7.0부터 `MEMENTO_ACCESS_KEY`가 필수다. 개발/테스트 환경에서 인증을 비활성화하려면 `.env`에 `MEMENTO_AUTH_DISABLED=true`를 추가한다.
 
 ## 3. 의존성 설치
 

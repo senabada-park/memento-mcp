@@ -74,6 +74,10 @@ psql $DATABASE_URL -f lib/memory/migration-021-oauth-clients.sql  # OAuth 클라
 psql $DATABASE_URL -f lib/memory/migration-025-case-id-episode.sql    # fragments narrative reconstruction 컬럼 (case_id, goal, outcome, phase, resolution_status, assertion_status)
 psql $DATABASE_URL -f lib/memory/migration-026-case-events.sql        # case_events + case_event_edges + fragment_evidence 테이블 (Narrative Reconstruction Phase 3)
 psql $DATABASE_URL -f lib/memory/migration-027-v25-reconsolidation-episode-spreading.sql  # fragment_links 재통합 컬럼 + link_reconsolidations + case_events idempotency_key + keywords GIN 인덱스 (v2.5.0)
+psql $DATABASE_URL -f lib/memory/migration-028-v253-improvements.sql                     # 복합 인덱스 추가, used_rrf 단일화, superseded_by 제거 (v2.5.3)
+psql $DATABASE_URL -f lib/memory/migration-029-search-param-thresholds.sql               # SearchParamAdaptor 검색 파라미터 학습 테이블 (v2.5.6)
+psql $DATABASE_URL -f lib/memory/migration-030-search-param-thresholds-key-text.sql      # search_param_thresholds.key_id INTEGER → TEXT (UUID 호환) (v2.6.0)
+psql $DATABASE_URL -f lib/memory/migration-031-content-hash-per-key.sql                  # content_hash 전역 UNIQUE → 테넌트별 partial unique index (v2.7.0)
 ```
 
 v1.8.0부터 자동 마이그레이션을 지원한다. 위 수동 실행 대신:
@@ -89,6 +93,8 @@ DATABASE_URL=postgresql://user:pass@host:port/dbname npm run migrate
 > **migration-007**: fragment_links.weight 컬럼이 없으면 recall 호출 시 `column l.weight does not exist` 에러가 발생한다. v1.2.0 이전에서 업데이트한 경우 반드시 실행할 것.
 
 > **migration-009, 010**: co_retrieved 링크 타입이 없으면 Hebbian 링킹이 DB 제약 에러로 조용히 실패하고, ema_activation 컬럼이 없으면 incrementAccess SQL 오류가 발생한다. 반드시 실행 후 서버를 시작해야 한다.
+
+> **v2.7.0**: `MEMENTO_ACCESS_KEY` 환경 변수가 필수다. 설정하지 않으면 서버가 시작 시 경고를 출력하며 인증 없이 동작한다. 개발/테스트 환경에서 의도적으로 인증을 비활성화하려면 `.env`에 `MEMENTO_AUTH_DISABLED=true`를 추가한다.
 
 ```bash
 # 기본 임베딩(1536차원) 사용 시: migration-007 불필요

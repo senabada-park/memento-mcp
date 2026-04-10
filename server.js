@@ -260,6 +260,15 @@ const server = http.createServer(async (req, res) => {
   recordHttpRequest(req.method, url.pathname, 404, duration);
 });
 
+server.keepAliveTimeout = 0;
+server.headersTimeout   = 0;
+server.requestTimeout   = 0;
+
+server.on("connection", (socket) => {
+  socket.setKeepAlive(true, 60000);
+  socket.setNoDelay(true);
+});
+
 server.listen(PORT, () => {
   validateMemoryConfig(MEMORY_CONFIG);
   console.log(`Memento MCP HTTP server listening on port ${PORT}`);

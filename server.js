@@ -172,16 +172,36 @@ const server = http.createServer(async (req, res) => {
   }
 
   if ((req.method === "GET" || req.method === "POST") && url.pathname === "/authorize") {
+    if (req.method === "POST") {
+      const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      if (!rateLimiter.allow(clientIp)) {
+        res.writeHead(429, { "Retry-After": String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)) });
+        res.end(JSON.stringify({ error: "too_many_requests" }));
+        return;
+      }
+    }
     await handleOAuthAuthorize(req, res);
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/token") {
+    const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    if (!rateLimiter.allow(clientIp)) {
+      res.writeHead(429, { "Retry-After": String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)) });
+      res.end(JSON.stringify({ error: "too_many_requests" }));
+      return;
+    }
     await handleOAuthToken(req, res);
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/register") {
+    const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    if (!rateLimiter.allow(clientIp)) {
+      res.writeHead(429, { "Retry-After": String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)) });
+      res.end(JSON.stringify({ error: "too_many_requests" }));
+      return;
+    }
     await handleOAuthRegister(req, res);
     return;
   }
@@ -202,8 +222,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  /* Admin API */
+  /* Admin API (auth 포함 주요 POST 경로에 rate limit 적용) */
   if (url.pathname.startsWith(`${ADMIN_BASE}/`)) {
+    const isRateLimitedAdminPath =
+      (req.method === "POST" && url.pathname === `${ADMIN_BASE}/auth`) ||
+      (req.method === "POST" && url.pathname === `${ADMIN_BASE}/keys`) ||
+      (req.method === "POST" && url.pathname === `${ADMIN_BASE}/import`);
+
+    if (isRateLimitedAdminPath) {
+      const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      if (!rateLimiter.allow(clientIp)) {
+        res.writeHead(429, { "Content-Type": "application/json", "Retry-After": String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)) });
+        res.end(JSON.stringify({ error: "Too Many Requests" }));
+        return;
+      }
+    }
     await handleAdminApi(req, res);
     return;
   }

@@ -19,7 +19,7 @@
 | RATE_LIMIT_PER_KEY | 100 | API 키당 분당 요청 한도 (인증된 요청) |
 | CONSOLIDATE_INTERVAL_MS | 21600000 | 자동 유지보수(consolidate) 실행 간격 (ms). 기본 6시간 |
 | EVALUATOR_MAX_QUEUE | 100 | MemoryEvaluator 큐 크기 상한 (초과 시 오래된 작업 드롭) |
-| OAUTH_TRUSTED_ORIGINS | (없음) | OAuth redirect_uri 신뢰 도메인 (쉼표 구분, origin 단위). 기본값: `claude.ai, chatgpt.com, platform.openai.com, copilot.microsoft.com, gemini.google.com` |
+| OAUTH_TRUSTED_ORIGINS | (없음) | OAuth redirect_uri 신뢰 도메인 (쉼표 구분, origin 단위). 기본값 없음 — 허용할 도메인을 명시적으로 지정한다. 예: `https://claude.ai,https://chatgpt.com,https://platform.openai.com,https://copilot.microsoft.com,https://gemini.google.com` |
 | OAUTH_ALLOWED_REDIRECT_URIS | (없음) | OAuth redirect_uri 정확 일치 허용 목록 (쉼표 구분). OAUTH_TRUSTED_ORIGINS와 별도로 동작 |
 | DEFAULT_DAILY_LIMIT | 10000 | API 키 생성 시 기본 일일 호출 한도 |
 | DEFAULT_PERMISSIONS | read,write | API 키 생성 시 기본 권한 |

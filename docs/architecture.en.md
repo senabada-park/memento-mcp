@@ -102,24 +102,32 @@ Supporting modules:
 
 ```
 lib/
-+-- config.js          Environment variables exposed as constants
-+-- auth.js            Bearer token validation
++-- config.js          Environment variables exposed as constants. Includes AUTH_DISABLED (MEMENTO_AUTH_DISABLED), OAUTH_TOKEN_TTL_SECONDS, OAUTH_REFRESH_TTL_SECONDS, ENABLE_OPENAPI, SSE_HEARTBEAT_INTERVAL_MS
++-- auth.js            Bearer token validation. `resolveAuthConfig(accessKey, authDisabled)` -- pure function for auth config resolution. `buildAuthDecision(accessKey, authDisabled, bearerToken)` -- fail-closed entry and master key direct comparison pure function (excludes OAuth/DB API key verification)
 +-- oauth.js           OAuth 2.0 PKCE authorization/token handling
 +-- sessions.js        Streamable/Legacy SSE session lifecycle
 +-- redis.js           ioredis client (Sentinel support)
 +-- gemini.js          Google Gemini API/CLI client (geminiCLIJson, isGeminiCLIAvailable)
 +-- compression.js     Response compression (gzip/deflate)
-+-- metrics.js         Prometheus metric collection (prom-client)
-+-- logger.js          Winston logger (daily rotate)
++-- metrics.js         Prometheus metric collection (prom-client). 4 denial-path counters: `memento_auth_denied_total{reason}` (auth denial), `memento_cors_denied_total{reason}` (CORS denial), `memento_rbac_denied_total{tool,reason}` (RBAC denial), `memento_tenant_isolation_blocked_total{component}` (tenant isolation block)
++-- logger.js          Winston logger (daily rotate). REDACT_PATTERNS-based redactor format: auto-masking of Authorization Bearer tokens, mmcp_ API keys, mmcp_session cookies, OAuth code/refresh_token/access_token (6 patterns). content field trimmed to head 50 + tail 50 when exceeding 200 chars
++-- openapi.js         OpenAPI 3.1.0 spec generator. Enabled when `ENABLE_OPENAPI=true` via `GET /openapi.json`. Auth-level-based tool list filtering: master key -> all paths (including Admin REST API), API key -> permissions-based tool list
 +-- rate-limiter.js    IP-based sliding window rate limiter
 +-- rbac.js            RBAC authorization (read/write/admin tool-level permissions)
-+-- http-handlers.js   MCP/SSE HTTP handlers (Admin routes separated into admin-routes.js)
++-- http-handlers.js   HTTP handler re-export hub (21 lines). Actual implementations in lib/handlers/ submodules
 +-- scheduler.js       Periodic task scheduler (setInterval task management)
 +-- scheduler-registry.js Scheduler task registry (per-task success/failure tracking)
 +-- utils.js           Origin validation, JSON body parsing (2MB cap), SSE output
 
+lib/handlers/
++-- _common.js         getAllowedOrigin, setWorkerRefs, recordConsolidateRun (shared utilities)
++-- health-handler.js  handleHealth, handleMetrics
++-- mcp-handler.js     handleMcpPost/Get/Delete (Streamable HTTP). `injectSessionContext(msg, ctx)` -- injects server-controlled context (_sessionId, _keyId, _groupKeyIds, _permissions, _defaultWorkspace) into tools/call message arguments. Client-supplied fields of the same name are overwritten with server values to prevent forgery
++-- sse-handler.js     handleLegacySseGet/Post (Legacy SSE)
++-- oauth-handler.js   OAuth 5 endpoints (ServerMetadata, ResourceMetadata, Register, Authorize, Token)
+
 lib/admin/
-+-- ApiKeyStore.js     API key CRUD, group CRUD, authentication verification (SHA-256 hash storage, raw key returned once only)
++-- ApiKeyStore.js     API key CRUD, group CRUD, authentication verification (SHA-256 hash storage, raw key returned once only). `getGroupKeyIds(keyId)` -- returns array of all key IDs in keyId's group (null input returns null immediately, no DB query)
 +-- OAuthClientStore.js OAuth client CRUD (client_id/secret validation, redirect_uri whitelist)
 +-- admin-auth.js      Admin auth routes (POST /auth, session cookie issuance)
 +-- admin-keys.js      API key management routes
@@ -145,6 +153,7 @@ Tool implementations are separated into `lib/tools/`.
 ```
 lib/tools/
 +-- memory.js    16 MCP tool handlers
++-- reconstruct.js  reconstruct_history, search_traces tool handlers (Narrative Reconstruction)
 +-- memory-schemas.js  Tool schema definitions (inputSchema)
 +-- db.js        PostgreSQL connection pool, RLS-applied query helper (not exposed via MCP)
 +-- db-tools.js  MCP DB tool handlers (per-tool logic split from db.js)
@@ -153,6 +162,25 @@ lib/tools/
 +-- prompts.js   MCP Prompts definitions (analyze-session, retrieve-relevant-memory, etc.)
 +-- resources.js MCP Resources definitions (memory://stats, memory://topics, etc.)
 +-- index.js     Tool handler exports
+```
+
+CLI entry point and subcommands are separated into `bin/` and `lib/cli/`.
+
+```
+bin/
++-- memento.js          CLI entry point
+
+lib/cli/
++-- parseArgs.js        Argument parser
++-- serve.js            Server start
++-- migrate.js          Migration
++-- cleanup.js          Noise cleanup
++-- backfill.js         Embedding backfill
++-- stats.js            Statistics query
++-- health.js           Connection diagnostics
++-- recall.js           Terminal recall
++-- remember.js         Terminal remember
++-- inspect.js          Fragment detail
 ```
 
 One-time utility scripts are in `scripts/`.
@@ -166,7 +194,38 @@ scripts/
 +-- cleanup-noise.js                             Bulk cleanup of low-quality/noise fragments (one-time)
 ```
 
-`config/memory.js` is a separate configuration file for the memory system. It holds time-semantic composite ranking weights, stale thresholds, embedding worker settings, context injection, pagination, and GC policies.
+`config/memory.js` is a separate configuration file for the memory system. It holds time-semantic composite ranking weights, stale thresholds, embedding worker settings, context injection, pagination, and GC policies. `config/validate-memory-config.js` is called once at server startup to runtime-validate MEMORY_CONFIG weight sums, ranges, and type constraints. The process is halted on failure.
+
+---
+
+## SSE Transport Stability
+
+### Heartbeat Supervision
+
+SSE streams are monitored via periodic heartbeats (`: ping\n\n`).
+
+- Pings sent at `SSE_HEARTBEAT_INTERVAL_MS` (default 25s) intervals
+- `res.write()` return value detects backpressure (false = kernel buffer full)
+- Session auto-terminated after `SSE_MAX_HEARTBEAT_FAILURES` (default 3) consecutive failures
+- Failure counter reset on success
+
+### Proxy Compatibility
+
+- `X-Accel-Buffering: no` header: prevents nginx reverse proxy from buffering SSE responses
+- Legacy SSE handler: `res.flushHeaders()` for immediate header transmission
+
+### Socket Tuning
+
+- `keepAliveTimeout=0`, `headersTimeout=0`, `requestTimeout=0`: server-level timeouts disabled (protects long-lived SSE connections)
+- `socket.setKeepAlive(true, 60000)`: TCP keep-alive with 60s idle timeout
+- `socket.setNoDelay(true)`: TCP_NODELAY minimizes packet delay
+
+### sseWrite Atomic Write
+
+`sseWrite(res, event, data)` (`lib/http/helpers.js`):
+- Pre-checks `res.destroyed` / `!res.writable`
+- Sends event + data via a single `res.write()` call for atomic transmission
+- Returns boolean (true=success, false=failure)
 
 ---
 
@@ -203,6 +262,12 @@ erDiagram
         text context_summary "Context/background summary of when the memory was created (primarily used in episodes)"
         text session_id "Session ID in which the fragment was created"
         text workspace "Workspace isolation (NULL=global)"
+        text case_id "Narrative Reconstruction case ID"
+        text goal "Case goal"
+        text outcome "Case outcome"
+        text phase "Case phase"
+        text resolution_status "open / resolved / wont_fix"
+        text assertion_status "observed / inferred / verified / rejected"
     }
     fragment_links {
         bigserial id PK
@@ -227,6 +292,29 @@ erDiagram
         bigserial id PK
         text session_id
         boolean overall_success
+    }
+    case_events {
+        text event_id PK
+        text case_id
+        text session_id
+        text event_type "8 types: milestone/hypothesis/decision/error/fix/verification"
+        text summary
+        timestamptz occurred_at
+        text key_id FK
+        text idempotency_key "Dedup key (UNIQUE, nullable)"
+    }
+    case_event_edges {
+        bigserial edge_id PK
+        text from_event_id FK
+        text to_event_id FK
+        text edge_type "caused_by / resolved_by / preceded_by / contradicts"
+        real confidence
+    }
+    fragment_evidence {
+        bigserial id PK
+        text fragment_id FK
+        text event_id FK
+        text kind
     }
 ```
 
@@ -266,6 +354,12 @@ The store for all fragments. This is the core table of the system.
 | context_summary | TEXT | | Context/background summary of when the memory was created (primarily used in episodes) |
 | session_id | TEXT | | Session ID in which the fragment was created |
 | workspace | TEXT | | Workspace isolation label. NULL means global fragment (visible in all workspace searches). When set, only this workspace + global (NULL) fragments are returned |
+| case_id | TEXT | | Narrative Reconstruction case identifier. Groups fragments linked to the same incident/task context |
+| goal | TEXT | | Case goal description |
+| outcome | TEXT | | Case actual outcome description |
+| phase | TEXT | | Case current phase label |
+| resolution_status | TEXT | CHECK | Case resolution status: open (in progress) / resolved (completed) / wont_fix (closed without resolution) |
+| assertion_status | TEXT | CHECK | Fragment assertion confidence: observed (default, directly witnessed) / inferred (derived) / verified (confirmed) / rejected (dismissed) |
 
 Index list: content_hash (UNIQUE), topic (B-tree), type (B-tree), keywords (GIN), importance DESC (B-tree), created_at DESC (B-tree), agent_id (B-tree), linked_to (GIN), (ttl_tier, created_at) (B-tree), source (B-tree), verified_at (B-tree), is_anchor WHERE TRUE (partial index), valid_from (B-tree), (topic, type) WHERE valid_to IS NULL (partial index), id WHERE valid_to IS NULL (partial UNIQUE). `idx_fragments_key_workspace` (key_id, workspace) WHERE valid_to IS NULL (composite partial index — optimizes simultaneous key + workspace filtering), `idx_fragments_workspace` (workspace) WHERE workspace IS NOT NULL AND valid_to IS NULL (partial index for workspace-only full scans).
 
@@ -357,6 +451,44 @@ Audit table recording weight/confidence change history for fragment_links. Recon
 | metadata | JSONB | Additional metadata |
 | created_at | TIMESTAMPTZ | |
 
+### case_events
+
+Semantic milestone log table for Narrative Reconstruction. Records key events within a case or session scope in chronological order.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| event_id | TEXT | PRIMARY KEY -- event unique identifier |
+| case_id | TEXT | Associated case ID (corresponds to fragments.case_id) |
+| session_id | TEXT | Session ID where the event occurred |
+| event_type | TEXT | milestone_reached / hypothesis_proposed / hypothesis_rejected / decision_committed / error_observed / fix_attempted / verification_passed / verification_failed |
+| summary | TEXT | Event summary text |
+| occurred_at | TIMESTAMPTZ | Event occurrence timestamp |
+| key_id | TEXT | API key isolation (same criteria as fragments.key_id) |
+| idempotency_key | TEXT | Deduplication key for preventing duplicate inserts. UNIQUE constraint applied when NOT NULL |
+
+### case_event_edges
+
+DAG edge table expressing causal/sequential relationships between case_events.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| edge_id | BIGSERIAL | PRIMARY KEY |
+| from_event_id | TEXT | Source event (ON DELETE CASCADE) |
+| to_event_id | TEXT | Target event (ON DELETE CASCADE) |
+| edge_type | TEXT | caused_by / resolved_by / preceded_by / contradicts |
+| confidence | REAL | Relationship confidence (0.0~1.0) |
+
+### fragment_evidence
+
+Evidence join table linking fragments to case_events. Connects fragments that support a specific event.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | BIGSERIAL | PRIMARY KEY |
+| fragment_id | TEXT | Evidence fragment (ON DELETE CASCADE) |
+| event_id | TEXT | Associated event (ON DELETE CASCADE) |
+| kind | TEXT | Evidence role classification label |
+
 ---
 
 ### Row-Level Security
@@ -439,6 +571,24 @@ MCP clients connect via an OAuth 2.0 flow based on RFC 8414/RFC 7591/RFC 7636. U
 - **Session auto-recovery**: On "Session not found" error, the server re-authenticates and automatically creates a new session with keyId/groupKeyIds preserved
 - **Implementation files**: `lib/oauth.js`, `lib/admin/OAuthClientStore.js`
 
+### Tenant Isolation Security Model
+
+Memory isolation is composed of three layers.
+
+| Layer | Isolation Key | Behavior |
+|-------|--------------|----------|
+| RLS (Row-Level Security) | `agent_id` | Based on session variable `app.current_agent_id`. Shared access for `default` agent and `system`/`admin` sessions |
+| key_id isolation | `key_id` column | master key: `key_id = NULL` (full access), API key: `key_id = <that key's ID>` (own fragments only) |
+| Group isolation | `groupKeyIds` array | Fragments shared among keys in the same group. `COALESCE(group_id, api_keys.id)` used as effective_key_id |
+
+**key_id isolation principles**:
+- `keyId = null` (master): key_id condition omitted from WHERE clause -> full fragment access
+- `keyId = value` (API key): `AND (key_id = $N OR key_id IN (groupKeyIds))` condition added -> only own + group fragments accessible
+
+**workspace isolation** (additional partitioning within the same key_id):
+- `workspace IS NULL`: global fragment (visible in all workspace searches)
+- `workspace = X`: only that workspace + global fragments returned (`workspace = $X OR workspace IS NULL` condition)
+
 ### Admin Console Structure
 
 The Admin UI is built as an app shell architecture (`assets/admin/index.html` + `assets/admin/admin.css` + `assets/admin/admin.js`). It is divided into 7 navigation sections:
@@ -456,6 +606,33 @@ The Admin UI is built as an app shell architecture (`assets/admin/index.html` + 
 See [Admin Console Guide](admin-console-guide.md) for screen layouts and operation details for each tab.
 
 The `/stats` response includes `searchMetrics`, `observability`, `queues`, and `healthFlags` fields in addition to basic statistics.
+
+**Admin UI ESM Structure** (`assets/admin/`):
+
+Operates as browser-native ESM without a bundler. `admin.js` is a 58-line entry point that dynamically imports 13 domain-specific modules from `assets/admin/modules/`.
+
+| Module | Role |
+|--------|------|
+| `state.js` | Global state management (current tab, auth token, data cache) |
+| `api.js` | Admin REST API call abstraction |
+| `ui.js` | Shared UI utilities (notifications, loading spinner, modal) |
+| `format.js` | Date/size/status format helpers |
+| `auth.js` | Login/logout, session cookie management |
+| `layout.js` | Navigation, tab switching, sidebar rendering |
+| `overview.js` | KPI cards, system health, recent activity |
+| `keys.js` | API key list/create/edit (permissions toggle, daily_limit inline edit) |
+| `groups.js` | Key group management, member assignment |
+| `sessions.js` | Session list/detail/reflect/terminate |
+| `graph.js` | D3.js force-directed knowledge graph |
+| `logs.js` | Log file viewing (reverse tail, level/search filters) |
+| `memory.js` | Fragment search/filter, anomaly detection, search observability |
+
+**Graph Rendering Optimizations** (`modules/graph.js`):
+
+- SVG filter (blur) disabled during simulation, restored after stabilization (`alphaDecay <= 0.05`) -- prevents frame drops
+- `adjMap` pre-built: neighbor lookup on node hover O(L) -> O(1) (L = total link count)
+- Satellite rAF (requestAnimationFrame) loop: paused during simulation, fully stopped on `document.hidden` -- minimizes background tab CPU usage
+- `alphaDecay = 0.05` for accelerated convergence (vs D3 default 0.0228)
 
 ### API Key Groups
 
@@ -502,7 +679,9 @@ The recall tool searches from the least expensive layer first. If an earlier lay
 
 **L2: PostgreSQL GIN index.** Always executed after L1. A GIN (Generalized Inverted Index) is on the keywords TEXT[] column. Search uses the `keywords && ARRAY[...]` operator -- an operator that checks for array intersection. The GIN index indexes each array element individually, so this operation is processed as an index scan, not a sequential scan.
 
-**L3: pgvector HNSW cosine similarity.** Triggered only when the recall parameters include a `text` field. Insufficient result count alone does not activate L3. The query text is converted to an embedding vector, and `embedding <=> $1` computes cosine distance. All embeddings are L2-normalized unit vectors, so cosine similarity and inner product are equivalent. HNSW indexes quickly find approximate nearest neighbors. The `threshold` parameter sets a similarity floor -- L3 results below this value are excluded. L1/L2-routed results lack a similarity value and are therefore exempt from threshold filtering.
+**L2.5: Graph neighbor expansion.** Collects 1-hop neighbors of the top 5 L2 fragments from fragment_links. Handled by GraphNeighborSearch with a 1.5x RRF weight multiplier. Graph neighbors are only executed when L2 results exist, so the added cost is a single SQL query.
+
+**L3: pgvector HNSW cosine similarity.** Triggered only when the recall parameters include a `text` field. Insufficient result count alone does not activate L3. The query text is converted to an embedding vector, and `embedding <=> $1` computes cosine distance. EmbeddingCache caches query embeddings in Redis (key: `emb:q:{sha256 first 16 chars}`, 1-hour TTL), skipping embedding API calls on repeated identical queries. Falls back to the original API on cache failure. All embeddings are L2-normalized unit vectors, so cosine similarity and inner product are equivalent. HNSW indexes quickly find approximate nearest neighbors. The `threshold` parameter sets a similarity floor -- L3 results below this value are excluded. L1/L2-routed results lack a similarity value and are therefore exempt from threshold filtering.
 
 All layer results pass through a `valid_to IS NULL` filter in the final stage -- fragments superseded via superseded_by are excluded from search by default. Passing `includeSuperseded: true` includes expired fragments.
 
@@ -536,3 +715,114 @@ Fragments stored with `scope: "session"` serve as session working memory. They a
 Fragments marked `isAnchor: true` are permanently excluded from MemoryConsolidator's decay and deletion regardless of their tier. Even with importance as low as 0.1, they will not be deleted. Use this for knowledge that must never be lost.
 
 Stale thresholds (days): procedure=30, fact=60, decision=90, default=60. Adjust in `config/memory.js` under `MEMORY_CONFIG.staleThresholds`.
+
+---
+
+## Case-Based Reasoning Engine
+
+A narrative reconstruction engine that groups fragments by case_id, performs structured search over past similar cases, and traces causal chains.
+
+### CaseEventStore
+
+`lib/memory/CaseEventStore.js`. Handles CRUD for the case_events table plus DAG edges/evidence joins.
+
+**8 event_types**:
+
+| event_type | Description |
+|------------|-------------|
+| `milestone_reached` | Major completion stage reached in a task |
+| `hypothesis_proposed` | Hypothesis proposed |
+| `hypothesis_rejected` | Hypothesis rejected |
+| `decision_committed` | Architecture/technology decision committed |
+| `error_observed` | Error observation recorded |
+| `fix_attempted` | Fix attempt made |
+| `verification_passed` | Verification passed (-> CaseRewardBackprop backpropagation +0.15) |
+| `verification_failed` | Verification failed (-> CaseRewardBackprop backpropagation -0.10) |
+
+**Key methods**:
+- `append(event)`: Insert event. Deduplication via `idempotency_key`
+- `addEdge(fromId, toId, edgeType, confidence)`: Add DAG edge
+- `addEvidence(fragmentId, eventId, kind)`: Link fragment-event evidence
+- `getByCase(caseId)`: Retrieve all events for a case in chronological order
+- `getBySession(sessionId)`: Retrieve events scoped to a session
+- `getEdgesByEvents(eventIds)`: Batch retrieve DAG edges for a list of event IDs
+
+### case_event_edges DAG
+
+The `case_event_edges` table is a directed acyclic graph (DAG) representing causal/sequential relationships between events.
+
+| edge_type | Meaning |
+|-----------|---------|
+| `caused_by` | A was caused by B (root cause tracing) |
+| `resolved_by` | A was resolved by B |
+| `preceded_by` | A occurred before B (temporal ordering) |
+| `contradicts` | A and B contradict each other |
+
+The `reconstruct_history` tool uses BFS to traverse this DAG, returning causal chains (`causal_chains`) and unresolved branches (`unresolved_branches`).
+
+### fragment_evidence
+
+Evidence join table linking fragments to case events. The `fragment_id + event_id + kind` triple specifies "which fragment serves as evidence for which event." `CaseRewardBackprop` queries this table to identify backpropagation target fragments.
+
+### CaseRecall
+
+Passing `caseMode: true` to the recall tool activates the CaseRecall path. It returns `(goal, events[], outcome)` triples per case_id, restoring the complete resolution flow of similar cases in a single call.
+
+### CaseRewardBackprop
+
+`lib/memory/CaseRewardBackprop.js`. When `verification_passed` or `verification_failed` events are inserted into case_events, atomically backpropagates importance to evidence fragments via fragment_evidence.
+
+- `verification_passed` -> evidence fragment `importance += 0.15` (clamped to 1.0 upper bound)
+- `verification_failed` -> evidence fragment `importance -= 0.10` (clamped to 0.0 lower bound)
+- Atomic single-query update via PostgreSQL UPDATE ... RETURNING
+
+---
+
+## Reconsolidation Engine
+
+A link strength update engine that applies tool_feedback signals to fragment_links weight/confidence in real time.
+
+`lib/memory/ReconsolidationEngine.js` + `link_reconsolidations` table.
+
+Activated by setting environment variable `ENABLE_RECONSOLIDATION=true`.
+
+### link_reconsolidations Table
+
+Weight/confidence change history audit table. Each `ReconsolidationEngine.reconsolidate()` call inserts before/after values, reason, and trigger source, enabling link strength change tracking.
+
+### 3 Actions
+
+| Action | Behavior |
+|--------|----------|
+| `reinforce` | `weight += delta`, `confidence = min(1, confidence + 0.05)`. Strengthens links evaluated as useful |
+| `decay` | `weight = max(0, weight - delta)`, `confidence = max(0, confidence - 0.03)`. Weakens links evaluated as irrelevant |
+| `quarantine` | `quarantine_state = 'soft'`. Quarantines contradictory links (excluded from search results) |
+
+`restore` (quarantine release) and `soft_delete` (weight=0 soft-delete) actions are also supported.
+
+### tool_feedback Integration
+
+When new feedback is inserted into the `tool_feedback` table:
+- `relevant = false` -> `decay` applied to links between fragment pairs returned in that session
+- `relevant = true` -> `reinforce` applied to the same fragment pair links
+
+This flow implements Hebbian-principle self-supervised link adjustment.
+
+---
+
+## Spreading Activation
+
+An async activation propagation engine that proactively boosts `ema_activation` of related fragments when `contextText` is passed to a recall call.
+
+`lib/memory/SpreadingActivation.js`.
+
+Activated by setting environment variable `ENABLE_SPREADING_ACTIVATION=true`.
+
+**Operation flow**:
+
+1. Extracts keywords from `contextText` and selects seed fragments via fragments.keywords GIN index
+2. Collects 1-hop neighbors of seed fragments from `fragment_links` (graph propagation)
+3. Cumulatively updates target fragments' `ema_activation` following the ACT-R model
+4. Stores results in a 10-minute TTL Redis cache, optimizing repeated calls within the same context
+
+Activated fragments receive an importance boost through `computeEmaRankBoost()` during search result ranking, placing contextually relevant results higher.

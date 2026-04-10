@@ -188,6 +188,64 @@ Runs asynchronously in the `MemoryManager._autoLinkOnRemember()` chain on every 
 
 ---
 
+## CaseEventStore
+
+A dedicated store that records and queries semantic milestones in the case_events table. Injected into `MemoryManager` and used through the `reconstructHistory()` path.
+
+**Key methods:**
+
+| Method | Description |
+|--------|-------------|
+| `append(caseId, sessionId, eventType, summary, keyId)` | Records a new event. Uses `FOR UPDATE` lock on sequence_no for concurrency control |
+| `addEdge(fromId, toId, edgeType, confidence)` | Adds a DAG edge between events |
+| `addEvidence(fragmentId, eventId, kind)` | Records a fragment-event evidence join |
+| `getByCase(caseId, opts)` | Queries event list scoped to a case (occurred_at ascending) |
+| `getBySession(sessionId, opts)` | Queries event list scoped to a session |
+| `getEdgesByEvents(eventIds)` | Batch queries all edges for a list of event IDs |
+
+**8 event_types:**
+
+- `milestone_reached` — Goal milestone reached
+- `hypothesis_proposed` — Hypothesis proposed
+- `hypothesis_rejected` — Hypothesis rejected
+- `decision_committed` — Decision committed
+- `error_observed` — Error observed
+- `fix_attempted` — Fix attempted
+- `verification_passed` — Verification passed
+- `verification_failed` — Verification failed
+
+**Concurrency:** Inside `append()`, an exclusive row lock is acquired via `SELECT sequence_no FROM case_events WHERE case_id = $1 FOR UPDATE` before performing the INSERT. This prevents sequence_no duplication when events are concurrently inserted into the same case.
+
+---
+
+## HistoryReconstructor
+
+Collects fragments and events based on `case_id` or `entity` keywords and reconstructs a chronological narrative. Called from `MemoryManager.reconstructHistory()`.
+
+**`reconstruct(params)` return structure:**
+
+| Field | Description |
+|-------|-------------|
+| `ordered_timeline` | Fragment list (created_at ascending) |
+| `causal_chains` | Causal chain array projected via BFS |
+| `unresolved_branches` | List of unresolved branches |
+| `supporting_fragments` | Evidence fragments for causal chains |
+| `case_events` | Event list for the given case/session |
+| `event_dag` | case_event_edges DAG representation |
+| `summary` | Narrative summary text |
+
+**BFS causal chain algorithm:**
+
+Constructs a unified graph from `caused_by` / `resolved_by` edges in `fragment_links` and edges of the same types in `case_event_edges`. Performs BFS from start nodes to extract all reachable causal chains. Cycles are blocked via a visited set.
+
+**Unresolved branch detection:**
+
+Collected via OR of these two conditions:
+- Fragments with `fragments.resolution_status = 'open'`
+- Events with `case_events.event_type = 'error_observed'` that have no outgoing `resolved_by` edge
+
+---
+
 ## ReconsolidationEngine (Dynamic Link Updates)
 
 `lib/memory/ReconsolidationEngine.js` dynamically updates the weight and confidence of fragment_links and records change history in the link_reconsolidations table.
@@ -267,3 +325,38 @@ Temporal axis (valid_from/valid_to, superseded_by) preserves existing data
 - **Zero data loss**: Temporal columns manage versioning instead of deleting fragments
 - **Implementation files**: `lib/memory/NLIClassifier.js`, `lib/memory/MemoryConsolidator.js`
 - **Environment variable**: When `NLI_SERVICE_URL` is unset, ONNX in-process is used automatically (~280MB, downloaded on first run)
+
+---
+
+## Smart Recall (v2.5.6)
+
+Three auto-learning subsystems were added to the remember/recall pipeline.
+
+### ProactiveRecall (RememberPostProcessor)
+
+The final stage of the remember() post-processing pipeline. Performs L1/L3 search using the stored fragment's keywords, and creates `related_to` links when keyword overlap with existing fragments >= 0.5.
+
+- Search: `FragmentSearch.search({ keywords, tokenBudget: 400, fragmentCount: 5 })`
+- Link criteria: `|shared_keywords| / max(|new_kw|, |candidate_kw|) >= 0.5`
+- Fire-and-forget: tracked via `_proactiveRecallPromise` (for test stability)
+- No embedding used: embeddings have not yet been generated at remember() time, so only the keyword path is used
+
+### CaseRewardBackprop (CaseEventStore -> CaseRewardBackprop)
+
+When a verification event is added to case_events, atomically adjusts the importance of evidence fragments (via fragment_evidence JOIN) for that case.
+
+- SQL: `UPDATE fragments SET importance = LEAST(1.0, GREATEST(0.0, importance + $delta)) FROM fragment_evidence, case_events WHERE ...`
+- Concurrency: UPDATE FROM is atomic via row locking. No read-modify-write race condition.
+- Trigger: fire-and-forget after `CaseEventStore.append()` COMMIT
+- Singleton: `getBackprop()` (shared for server lifetime)
+
+### SearchParamAdaptor (FragmentSearch -> SearchParamAdaptor)
+
+Records result counts for each search call in the `search_param_thresholds` table and atomically adjusts minSimilarity via a DB-level CASE expression.
+
+- Table: `agent_memory.search_param_thresholds` (migration-029)
+- Key: `(key_id, query_type, hour_bucket)` — key_id=-1 for master/global default
+- Learning: applied after `sample_count >= 50`
+- Adaptation: `avg_result < 1 -> -0.01`, `avg_result > 8 -> +0.01` (symmetric, [0.10, 0.60])
+- UPSERT: single INSERT...ON CONFLICT DO UPDATE without SELECT (TOCTOU-free)
+- Integration: Promise attached in `_buildSearchQuery()`, awaited in `_searchL3()`

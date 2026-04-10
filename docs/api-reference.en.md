@@ -194,6 +194,342 @@ MCP resources for real-time queries on the current state of the memory system.
 
 ---
 
+## MCP Tool — recall
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| keywords | string[] | - | Keyword search (L1->L2) |
+| text | string | - | Natural language query (L3 semantic) |
+| topic | string | - | Topic filter |
+| type | string | - | Type filter (fact, decision, error, preference, procedure, relation, episode) |
+| tokenBudget | number | - | Maximum return tokens. Default 1000. |
+| includeLinks | boolean | - | Include linked fragments (1-hop, resolved_by/caused_by prioritized). Default true. |
+| linkRelationType | string | - | Link relation type filter (related, caused_by, resolved_by, part_of, contradicts) |
+| threshold | number | - | Similarity threshold (0-1) |
+| includeSuperseded | boolean | - | Include expired (superseded) fragments. Default false. |
+| asOf | string | - | ISO 8601. Return only fragments valid at the specified point in time. |
+| excludeSeen | boolean | - | Exclude fragments already injected by context(). Default true. |
+| includeKeywords | boolean | - | Include each fragment's keywords array in the response |
+| includeContext | boolean | - | Include context_summary + adjacent fragments |
+| timeRange | object | - | {from, to} time range filter (ISO 8601 or natural language) |
+| caseId | string | - | Case ID filter. Returns only fragments belonging to the specified case. |
+| resolutionStatus | string | - | Resolution status filter (open / resolved / abandoned) |
+| phase | string | - | Work phase filter (planning, debugging, verification, etc.) |
+| caseMode | boolean | - | CBR mode. Groups similar fragments by case_id and returns them as (goal, events, outcome) triples. Use when referencing past similar work resolution cases. |
+| maxCases | number | - | Maximum number of cases to return in caseMode. Default 5, upper limit 10. |
+| depth | string | - | Search depth filter. "high-level" / "detail" / "tool-level". See details below. |
+| workspace | string | - | Search scope restriction. When specified, only fragments from the given workspace + global (NULL) fragments are returned. |
+| contextText | string | - | Current conversation context text. Proactively activates related fragments (when ENABLE_SPREADING_ACTIVATION=true). |
+| cursor | string | - | Pagination cursor |
+| pageSize | number | - | Default 20, max 50 |
+| agentId | string | - | Agent ID |
+| minImportance | number | - | Minimum importance filter (0-1). Only fragments with importance at or above this value are returned. |
+| isAnchor | boolean | - | When true, returns only anchor (pinned) fragments. Useful for querying core knowledge. |
+
+### Response Fragment Fields (key fields)
+
+Each returned fragment includes a `key_id` field. When called with a master key, fragments owned by other API keys may also be returned, identifiable by their `key_id` value. When called with an API key, only fragments owned by that key (`key_id` match) or group-shared fragments are returned.
+
+### depth enum
+
+| Value | Target Types | Use Case |
+|-------|-------------|----------|
+| `"high-level"` | decision, episode only | For planners. Strategy formulation and direction decisions. |
+| `"detail"` | All (default) | General search. No type restriction. |
+| `"tool-level"` | procedure, error, fact only | For executors. Retrieving concrete execution steps and config values. |
+
+### caseMode Response Structure
+
+When `caseMode=true`, a `cases` array is additionally returned alongside the regular fragments.
+
+```json
+{
+  "caseMode": true,
+  "cases": [{
+    "case_id": "abc-123",
+    "goal": "nginx 502 resolution",
+    "outcome": "upstream port mismatch fix",
+    "resolution_status": "resolved",
+    "events": [
+      {"event_type": "error_observed", "summary": "502 Bad Gateway"},
+      {"event_type": "fix_attempted", "summary": "nginx.conf modified"},
+      {"event_type": "verification_passed", "summary": "200 OK confirmed"}
+    ],
+    "fragment_count": 5,
+    "relevance_score": 3
+  }],
+  "caseCount": 1
+}
+```
+
+#### event_type enum
+
+| Value | Description |
+|-------|-------------|
+| `milestone_reached` | Major milestone achieved |
+| `hypothesis_proposed` | Hypothesis proposed |
+| `hypothesis_rejected` | Hypothesis rejected |
+| `decision_committed` | Decision committed |
+| `error_observed` | Error observed |
+| `fix_attempted` | Fix attempted |
+| `verification_passed` | Verification passed |
+| `verification_failed` | Verification failed |
+
+---
+
+## MCP Tool — remember
+
+Fragment-based memory storage. Store exactly one atomic fact in 1-2 sentences. If there is a lot of content, call multiple times to store each fact separately.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| content | string | Y | Content to remember (1-3 sentences, 300 characters recommended) |
+| topic | string | Y | Topic (e.g., database, email, deployment, security) |
+| type | string | Y | Fragment type. fact, decision, error, preference, procedure, relation, episode. Types other than episode are truncated beyond 300 characters. |
+| keywords | string[] | - | Keywords for search (auto-extracted if not provided) |
+| importance | number | - | Importance 0-1 (type-specific default if not provided) |
+| source | string | - | Source (session ID, tool name, etc.) |
+| linkedTo | string[] | - | List of existing fragment IDs to link to |
+| scope | string | - | Storage scope. permanent=long-term memory (default), session=session working memory (destroyed on session end) |
+| isAnchor | boolean | - | Pin important fragment. When true, excluded from importance decay and expiration deletion. |
+| supersedes | string[] | - | List of existing fragment IDs to replace. Specified fragments have their valid_to set and importance halved. |
+| contextSummary | string | - | Context/background summary of how this memory arose (1-2 sentences). Returned alongside the fragment on recall to restore context. |
+| sessionId | string | - | Current session ID. Used to bundle fragments from the same session by temporal adjacency. |
+| workspace | string | - | Workspace name. Key's default_workspace applied if not specified. |
+| agentId | string | - | Agent ID (for RLS isolation) |
+| caseId | string | - | Case/task identifier this fragment belongs to. Auto-set to the current session_id if not provided. |
+| goal | string | - | Goal of the episode fragment (recommended for episode type) |
+| outcome | string | - | Outcome of the episode fragment |
+| phase | string | - | Work phase (e.g., planning, debugging, verification) |
+| resolutionStatus | string | - | Task resolution status (open, resolved, abandoned) |
+| assertionStatus | string | - | Fragment confidence level (observed, inferred, verified, rejected). Default: observed |
+
+---
+
+## MCP Tool — batch_remember
+
+Store multiple fragments at once (for bulk memory input). Batch INSERTs up to 200 items in a single transaction, minimizing HTTP round-trips.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| fragments | object[] | Y | Array of fragments to store (max 200). Each item includes content (string, required), topic (string, required), type (string, required), importance (number), keywords (string[]), workspace (string). |
+| workspace | string | - | Batch default workspace. Used for individual fragments without a workspace. Key's default_workspace applied if not specified. |
+| agentId | string | - | Agent ID (for RLS isolation) |
+
+---
+
+## MCP Tool — forget
+
+Delete fragment memory. Either id or topic is required. Permanent-tier fragments require the force option.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| id | string | - | Fragment ID to delete |
+| topic | string | - | Delete all fragments with the given topic |
+| force | boolean | - | Force-delete permanent fragments (default false) |
+| agentId | string | - | Agent ID |
+
+---
+
+## MCP Tool — link
+
+Establish a relationship between two fragments. Specifies causal, resolution, composition, or contradiction relationships.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| fromId | string | Y | Source fragment ID |
+| toId | string | Y | Target fragment ID |
+| relationType | string | - | Relation type (related, caused_by, resolved_by, part_of, contradicts). Default related. |
+| agentId | string | - | Agent ID |
+| weight | number | - | Relation weight (0-1, default 1) |
+
+---
+
+## MCP Tool — amend
+
+Update the content or metadata of an existing fragment. Selectively modifies while preserving ID and links.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| id | string | Y | Target fragment ID to update |
+| content | string | - | New content (truncated beyond 300 characters) |
+| topic | string | - | New topic |
+| keywords | string[] | - | New keyword list |
+| type | string | - | New type (fact, decision, error, preference, procedure, relation) |
+| importance | number | - | New importance (0-1) |
+| isAnchor | boolean | - | Set anchor (pinned) status |
+| supersedes | boolean | - | When true, explicitly supersedes the existing fragment (creates superseded_by link and lowers importance) |
+| assertionStatus | string | - | Change fragment assertion status (observed, inferred, verified, rejected). For fragments with a case_id, changes automatically record verification_passed/verification_failed events. |
+| agentId | string | - | Agent ID |
+
+---
+
+## MCP Tool — reflect
+
+Persist session learnings as atomic fragments at session end. Each array item is stored as an independent fragment, so include only one fact/decision/procedure per item.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| summary | string \| string[] | - | Session overview fragment list. Array recommended. 1 item = 1 fact (1-2 sentences). |
+| sessionId | string | - | Session ID. When provided, reflect synthesizes only fragments from the same session. |
+| decisions | string[] | - | Technical/architecture decision list. 1 item = 1 decision. |
+| errors_resolved | string[] | - | Resolved error list. 'Cause: X -> Resolution: Y' format recommended. |
+| new_procedures | string[] | - | Established procedure/workflow list. 1 item = 1 procedure. |
+| open_questions | string[] | - | Unresolved question list. 1 item = 1 question. |
+| narrative_summary | string | - | Summarize the entire session as a 3-5 sentence narrative. Stored as an episode fragment contributing to cross-session context continuity. Auto-generated from summary if omitted. |
+| agentId | string | - | Agent ID |
+| task_effectiveness | object | - | Overall session tool usage effectiveness assessment. Includes overall_success (boolean), tool_highlights (string[]), tool_pain_points (string[]). |
+
+---
+
+## MCP Tool — context
+
+Loads Core Memory + Working Memory + session_reflect separately. Injects preference, error, procedure, decision fragments at session start to maintain context.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| tokenBudget | number | - | Maximum token count (default 2000) |
+| types | string[] | - | Types to load (default: preference, error, procedure) |
+| sessionId | string | - | Session ID (for Working Memory loading) |
+| agentId | string | - | Agent ID |
+| workspace | string | - | Workspace filter. When specified, returns only fragments from the given workspace + global (NULL) fragments. Key's default_workspace applied if not specified. |
+| structured | boolean | - | When true, returns hierarchical tree structure; when false/omitted, returns existing flat list (default: false) |
+
+---
+
+## MCP Tool — tool_feedback
+
+Usefulness feedback on tool usage results. Evaluates whether the target tool's results were relevant and sufficient.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| tool_name | string | Y | Name of the tool being evaluated |
+| relevant | boolean | Y | Were the results relevant to the request intent |
+| sufficient | boolean | Y | Were the results sufficient to complete the task |
+| suggestion | string | - | Improvement suggestion (100 characters max) |
+| context | string | - | Usage context summary (50 characters max) |
+| session_id | string | - | Session ID |
+| trigger_type | string | - | Trigger type. sampled=hook sampling, voluntary=AI voluntary (default voluntary) |
+| search_event_id | integer | - | _searchEventId returned by the most recent recall. Used for search quality analysis. |
+| fragment_ids | string[] | - | Fragment ID list for feedback targets. When provided, activation scores of the specified fragments are adjusted based on the feedback. |
+
+---
+
+## MCP Tool — memory_stats
+
+Query fragment memory system statistics. Returns total fragment count, TTL distribution, and per-type statistics.
+
+### Parameters
+
+No parameters.
+
+---
+
+## MCP Tool — memory_consolidate
+
+Execute fragment memory maintenance. Performs TTL transitions, importance decay, expiration deletion, and duplicate merging.
+
+### Parameters
+
+No parameters.
+
+---
+
+## MCP Tool — graph_explore
+
+Traces causal relationship chains starting from an error fragment. Dedicated to RCA (Root Cause Analysis). Follows caused_by, resolved_by relationships for 1-hop to connect error causes with resolution procedures.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| startId | string | Y | Starting fragment ID (error fragment recommended) |
+| agentId | string | - | Agent ID |
+
+---
+
+## MCP Tool — fragment_history
+
+Query the complete change history of a fragment. Returns previous versions modified via amend and superseded_by chains.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| id | string | Y | Fragment ID to query |
+
+---
+
+## MCP Tool — get_skill_guide
+
+Returns the Memento MCP best practices guide. Comprehensive skill reference covering memory tool usage, session lifecycle, keyword rules, search strategies, experiential memory usage, and more.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| section | string | - | Query a specific section only. Returns full guide if not specified. Possible values: overview, lifecycle, keywords, search, episode, multiplatform, tools, importance, experiential, triggers, antipatterns |
+
+---
+
+## MCP Tool — reconstruct_history
+
+Reconstruct work history chronologically based on case_id or entity. Restores narrative including causal chains and unresolved branches.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| caseId | string | - | Case identifier to reconstruct |
+| entity | string | - | entity_key filter (used when caseId is absent) |
+| timeRange | object | - | ISO 8601 time range. Includes from (start time), to (end time). |
+| query | string | - | Additional keyword filter |
+| limit | number | - | Default 100, max 500 |
+| workspace | string | - | Workspace filter. When specified, only fragments from the given workspace + global (NULL) fragments are targeted. |
+
+---
+
+## MCP Tool — search_traces
+
+Search fragments by exact matching (unlike recall's semantic search, uses content/type/case_id text matching). Filter by event_type, entity, and keywords to grep-like scan the full history.
+
+### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| event_type | string | - | Fragment type to filter (fact, error, decision, etc.) |
+| eventType | string | - | camelCase alias for event_type |
+| entity_key | string | - | Topic ILIKE filter |
+| entityKey | string | - | camelCase alias for entity_key |
+| keyword | string | - | Keyword search within content |
+| case_id | string | - | Case ID filter |
+| caseId | string | - | camelCase alias for case_id |
+| session_id | string | - | Session ID filter |
+| sessionId | string | - | camelCase alias for session_id |
+| time_range | object | - | Time range filter. Includes from (start time, ISO 8601), to (end time, ISO 8601). |
+| limit | number | - | Default 20, max 100 |
+| workspace | string | - | Workspace filter. When specified, only fragments from the given workspace + global (NULL) fragments are targeted. |
+
+---
+
 ## Recommended Usage Flow
 
 - Session start -- Call `context()` to load core memories. Preferences, error patterns, and procedures are restored. If unreflected sessions exist, a hint is displayed.

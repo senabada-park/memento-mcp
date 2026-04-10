@@ -23,7 +23,7 @@ server.js  (HTTP 서버)
     ├── lib/tool-registry.js  18개 기억 도구 등록 및 라우팅
     │
     └── lib/memory/
-            ├── MemoryManager.js          비즈니스 로직 조율 계층 (1,051줄, v2.6.0 기준, 싱글턴). remember/recall/forget/amend 진입점. 실제 로직은 아래 Processor/Builder로 위임
+            ├── MemoryManager.js          비즈니스 로직 조율 계층 (904줄, 싱글턴). remember/recall/forget/amend 진입점. 실제 로직은 아래 Processor/Builder로 위임
             ├── ContextBuilder.js         context() 로직 전담. Core/Working/Anchor Memory 조합 컨텍스트 생성
             ├── ReflectProcessor.js       reflect() 로직 전담. summary→파편 변환, episode 생성, Working Memory 정리
             ├── BatchRememberProcessor.js batchRemember() 로직 전담. Phase A(검증)→B(INSERT)→C(후처리) 3단계
@@ -32,7 +32,7 @@ server.js  (HTTP 서버)
             ├── EmbeddingCache.js         쿼리 임베딩 Redis 캐시 (emb:q:{sha256} 키, TTL 1시간, 장애 격리)
             ├── FragmentFactory.js        파편 생성, 유효성 검증, PII 마스킹
             ├── FragmentStore.js          PostgreSQL CRUD 파사드 (FragmentReader + FragmentWriter 위임)
-            ├── FragmentReader.js         파편 읽기 (getById, getByIds, getHistory, searchByKeywords, searchBySemantic)
+            ├── FragmentReader.js         파편 읽기. `getById(id, agentId, keyId, groupKeyIds)` — v2.7.0: groupKeyIds 파라미터 추가로 그룹 소속 키의 파편도 단일 호출로 조회. `getByIds`, `getHistory`, `searchByKeywords`, `searchBySemantic`
             ├── FragmentWriter.js         파편 쓰기 (insert, update, delete, incrementAccess, touchLinked)
             ├── FragmentSearch.js         3계층 검색 조율 (구조적: L1→L2, 시맨틱: L1→L2‖L3 RRF 병합)
             ├── FragmentIndex.js          Redis L1 인덱스 관리, getFragmentIndex() 싱글톤 팩토리
@@ -66,7 +66,6 @@ server.js  (HTTP 서버)
             ├── CaseEventStore.js         semantic milestone 로그 (case_events CRUD, DAG 엣지, 증거 조인)
             ├── CaseRewardBackprop.js     case verification 이벤트 -> 증거 파편 importance 원자적 역전파 (64줄)
             ├── SearchParamAdaptor.js     key_id x query_type x hour별 minSimilarity 온라인 학습, 원자적 UPSERT (116줄)
-            ├── CaseRecall.js             CBR(Case-Based Reasoning) 검색. recall(caseMode=true) 시 case_id별 그루핑, goal/events/outcome 트리플 반환. 145줄.
             ├── HistoryReconstructor.js   case_id/entity 기반 서사 재구성 (ordered_timeline, causal_chains, unresolved_branches)
             ├── memory-schema.sql         PostgreSQL 스키마 정의
             ├── migration-001-temporal.sql Temporal 스키마 마이그레이션 (valid_from/to/superseded_by)
@@ -96,23 +95,26 @@ server.js  (HTTP 서버)
             ├── migration-025-case-id-episode.sql      fragments narrative reconstruction 컬럼 (case_id, goal, outcome, phase, resolution_status, assertion_status)
             ├── migration-026-case-events.sql          case_events + case_event_edges + fragment_evidence 테이블 (Narrative Reconstruction Phase 3)
             ├── migration-027-v25-reconsolidation-episode-spreading.sql  search_events/case_events key_id 타입 수정, fragment_links 재통합 컬럼 + link_reconsolidations 테이블, case_events idempotency_key, fragments.keywords GIN 인덱스
-            ├── migration-028-v253-improvements.sql  (agent_id, topic, created_at DESC) 복합 인덱스 + (key_id, agent_id, importance DESC) 부분 인덱스 (QuotaChecker/FragmentReader 최적화)
-            └── migration-029-search-param-thresholds.sql  search_param_thresholds 테이블 (SearchParamAdaptor 온라인 학습 저장소, key_id NOT NULL DEFAULT -1)
+            ├── migration-028-composite-indexes.sql  (agent_id, topic, created_at DESC) 복합 인덱스 + (key_id, agent_id, importance DESC) 부분 인덱스 (QuotaChecker/FragmentReader 최적화)
+            ├── migration-029-search-param-thresholds.sql  search_param_thresholds 테이블 (SearchParamAdaptor 온라인 학습 저장소, key_id NOT NULL DEFAULT -1)
+            ├── migration-030-search-param-thresholds-key-text.sql  search_param_thresholds.key_id INTEGER→TEXT 변환 (fragments.key_id TEXT 타입과 통일, sentinel -1 → '-1')
+            └── migration-031-content-hash-per-key.sql  content_hash 전역 UNIQUE 인덱스 폐기 후 partial unique index 2개로 전환 (크로스 테넌트 ON CONFLICT 차단): uq_frag_hash_master (key_id IS NULL), uq_frag_hash_per_key (key_id IS NOT NULL, 복합)
 ```
 
 지원 모듈:
 
 ```
 lib/
-├── config.js          환경변수를 상수로 노출
-├── auth.js            Bearer 토큰 검증
+├── config.js          환경변수를 상수로 노출. AUTH_DISABLED(MEMENTO_AUTH_DISABLED), OAUTH_ACCESS_TTL_SECONDS, OAUTH_REFRESH_TTL_SECONDS, ENABLE_OPENAPI 포함
+├── auth.js            Bearer 토큰 검증. `resolveAuthConfig(accessKey, authDisabled)` — 인증 설정 해석 순수 함수. `buildAuthDecision(accessKey, authDisabled, bearerToken)` — fail-closed 진입부 및 master 키 직접 비교 순수 함수 (OAuth/DB API 키 검증 제외)
 ├── oauth.js           OAuth 2.0 PKCE 인가/토큰 처리
 ├── sessions.js        Streamable/Legacy SSE 세션 생명주기
 ├── redis.js           ioredis 클라이언트 (Sentinel 지원)
 ├── gemini.js          Google Gemini API/CLI 클라이언트 (geminiCLIJson, isGeminiCLIAvailable)
 ├── compression.js     응답 압축 (gzip/deflate)
-├── metrics.js         Prometheus 메트릭 수집 (prom-client)
-├── logger.js          Winston 로거 (daily rotate)
+├── metrics.js         Prometheus 메트릭 수집 (prom-client). 거부 경로 전용 카운터 4종: `memento_auth_denied_total{reason}` (인증 거부), `memento_cors_denied_total{reason}` (CORS 거부), `memento_rbac_denied_total{tool,reason}` (RBAC 거부), `memento_tenant_isolation_blocked_total{component}` (테넌트 격리 차단)
+├── logger.js          Winston 로거 (daily rotate). REDACT_PATTERNS 기반 redactor format: Authorization Bearer 토큰, mmcp_ API 키, mmcp_session 쿠키, OAuth code/refresh_token/access_token 자동 마스킹 (6개 패턴). content 필드 200자 초과 시 head 50 + tail 50 트리밍
+├── openapi.js         OpenAPI 3.1.0 스펙 생성기. `ENABLE_OPENAPI=true` 시 `GET /openapi.json` 활성화. 인증 레벨 기반 도구 목록 필터: master key → 전체 경로(Admin REST API 포함), API key → permissions 기반 도구 목록
 ├── rate-limiter.js    IP 기반 sliding window rate limiter
 ├── rbac.js            RBAC 권한 검사 (read/write/admin 도구 레벨 권한 적용)
 ├── http-handlers.js   HTTP 핸들러 re-export 허브 (21줄). 실제 구현은 lib/handlers/ 하위 모듈
@@ -123,12 +125,12 @@ lib/
 lib/handlers/
 ├── _common.js         getAllowedOrigin, setWorkerRefs, recordConsolidateRun (공통 유틸리티)
 ├── health-handler.js  handleHealth, handleMetrics
-├── mcp-handler.js     handleMcpPost/Get/Delete (Streamable HTTP)
+├── mcp-handler.js     handleMcpPost/Get/Delete (Streamable HTTP). `injectSessionContext(msg, ctx)` — tools/call 메시지의 arguments에 서버 제어 컨텍스트(_sessionId, _keyId, _groupKeyIds, _permissions, _defaultWorkspace) 주입. 클라이언트가 전달한 동명 필드는 서버값으로 덮어쓰기하여 위조 차단
 ├── sse-handler.js     handleLegacySseGet/Post (Legacy SSE)
 └── oauth-handler.js   OAuth 5개 엔드포인트 (ServerMetadata, ResourceMetadata, Register, Authorize, Token)
 
 lib/admin/
-├── ApiKeyStore.js     API 키 CRUD, 그룹 CRUD, 인증 검증 (SHA-256 해시 저장, 원시 키 단 1회 반환)
+├── ApiKeyStore.js     API 키 CRUD, 그룹 CRUD, 인증 검증 (SHA-256 해시 저장, 원시 키 단 1회 반환). `getGroupKeyIds(keyId)` — keyId 소속 그룹의 모든 키 ID 배열 반환 (null 입력 시 null 즉시 반환, DB 쿼리 없음)
 ├── OAuthClientStore.js OAuth 클라이언트 CRUD (client_id/secret 검증, redirect_uri 화이트리스트)
 ├── admin-auth.js      Admin 인증 라우트 (POST /auth, 세션 쿠키 발급)
 ├── admin-keys.js      API 키 관리 라우트

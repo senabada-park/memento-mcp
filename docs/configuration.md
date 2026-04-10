@@ -9,45 +9,46 @@
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
 | PORT | 57332 | HTTP 리슨 포트 |
-| MEMENTO_ACCESS_KEY | (없음) | Bearer 인증 키. 미설정 시 인증 비활성화 |
+| MEMENTO_ACCESS_KEY | (없음) | Bearer 인증 키. **v2.7.0 breaking**: 미설정 시 서버가 모든 요청을 거부(fail-closed). 개발 환경에서 인증을 비활성화하려면 `MEMENTO_AUTH_DISABLED=true`를 함께 사용해야 한다 |
+| MEMENTO_AUTH_DISABLED | false | `true`로 설정 시 인증을 완전히 비활성화하여 모든 요청을 master 권한으로 처리. 개발/테스트 전용. `MEMENTO_ACCESS_KEY`가 비어 있을 때만 유효 |
 | SESSION_TTL_MINUTES | 43200 | 세션 유효 시간 (분). 기본값 30일. 슬라이딩 윈도우 방식으로 도구 사용 시마다 갱신 |
 | LOG_DIR | ./logs | Winston 로그 파일 저장 디렉토리 |
-| ALLOWED_ORIGINS | (없음) | 허용할 Origin 목록. 쉼표로 구분. 미설정 시 전체 허용 |
+| ALLOWED_ORIGINS | (없음) | 허용할 Origin 목록. 쉼표로 구분. 미설정 시 same-origin만 허용 |
+| ADMIN_ALLOWED_ORIGINS | (없음) | Admin 콘솔 허용 Origin 목록. 미설정 시 same-origin만 허용 |
+| ENABLE_OPENAPI | false | `true`로 설정 시 `GET /openapi.json` 엔드포인트 활성화. 인증 레벨에 따라 다른 스펙 반환 (master key: 전체 경로 포함, API key: 권한 필터된 도구 목록) |
 | RATE_LIMIT_WINDOW_MS | 60000 | Rate limiting 윈도우 크기 (ms) |
 | RATE_LIMIT_MAX_REQUESTS | 120 | 윈도우 내 IP당 최대 요청 수 |
 | RATE_LIMIT_PER_IP | 30 | IP당 분당 요청 한도 (미인증 요청) |
 | RATE_LIMIT_PER_KEY | 100 | API 키당 분당 요청 한도 (인증된 요청) |
 | CONSOLIDATE_INTERVAL_MS | 21600000 | 자동 유지보수(consolidate) 실행 간격 (ms). 기본 6시간 |
 | EVALUATOR_MAX_QUEUE | 100 | MemoryEvaluator 큐 크기 상한 (초과 시 오래된 작업 드롭) |
-| OAUTH_TRUSTED_ORIGINS | (없음) | OAuth redirect_uri 신뢰 도메인 (쉼표 구분, origin 단위). 기본값 없음 — 허용할 도메인을 명시적으로 지정한다. 예: `https://claude.ai,https://chatgpt.com,https://platform.openai.com,https://copilot.microsoft.com,https://gemini.google.com` |
+| OAUTH_TRUSTED_ORIGINS | (없음) | OAuth redirect_uri 신뢰 도메인 추가 목록 (쉼표 구분, origin 단위). 기본 신뢰 도메인(claude.ai, chatgpt.com, platform.openai.com, copilot.microsoft.com, gemini.google.com)에 추가로 허용할 origin만 지정 |
 | OAUTH_ALLOWED_REDIRECT_URIS | (없음) | OAuth redirect_uri 정확 일치 허용 목록 (쉼표 구분). OAUTH_TRUSTED_ORIGINS와 별도로 동작 |
 | DEFAULT_DAILY_LIMIT | 10000 | API 키 생성 시 기본 일일 호출 한도 |
 | DEFAULT_PERMISSIONS | read,write | API 키 생성 시 기본 권한 |
-| DEFAULT_FRAGMENT_LIMIT | (없음) | API 키 생성 시 기본 파편 할당량. 미설정 시 무제한. `FRAGMENT_DEFAULT_LIMIT`과 동일 (하위 호환) |
+| DEFAULT_FRAGMENT_LIMIT | (없음) | API 키 생성 시 기본 파편 할당량. 미설정 시 무제한 |
 | DEDUP_BATCH_SIZE | 100 | 시맨틱 중복 제거 배치 크기 |
 | DEDUP_MIN_FRAGMENTS | 5 | dedup 최소 파편 수. 이 수 미만이면 중복 제거를 건너뛴다 |
 | COMPRESS_AGE_DAYS | 30 | 기억 압축 대상 비활성 일수 |
 | COMPRESS_MIN_GROUP | 3 | 압축 그룹 최소 크기. 이 수 미만이면 압축하지 않는다 |
 | RERANKER_ENABLED | false | cross-encoder reranking 활성화. true 시 recall 결과를 cross-encoder로 재순위화 |
 | RERANKER_MODEL | minilm | in-process 모드 ONNX 모델 선택. `minilm` (기본값, ~80MB, 영어 전용) 또는 `bge-m3` (~280MB, 다국어). **비영어권 사용자는 `bge-m3` 권장** — minilm은 영어 MS MARCO 데이터셋으로만 학습되어 한국어 등 비영어 파편 재순위화 품질이 저하됨. |
-| FRAGMENT_DEFAULT_LIMIT | 5000 | 새 API 키 생성 시 기본 파편 할당량 (기본: 5000, NULL=무제한). `DEFAULT_FRAGMENT_LIMIT`과 동일 (하위 호환) |
+| FRAGMENT_DEFAULT_LIMIT | 5000 | 새 API 키 생성 시 기본 파편 할당량 (기본: 5000, NULL=무제한) |
 | ENABLE_RECONSOLIDATION | false | ReconsolidationEngine 활성화. true 시 tool_feedback과 contradicts 감지 시 fragment_links weight/confidence를 동적 갱신한다 |
 | ENABLE_SPREADING_ACTIVATION | false | SpreadingActivation 활성화. true 시 recall의 contextText 파라미터로 관련 파편을 선제적 활성화한다. 레이턴시 영향 측정 후 활성화 권장 |
 | ENABLE_PATTERN_ABSTRACTION | false | 패턴 추상화 활성화. 데이터 충분 축적 후 활성화 예정 (현재 미구현) |
-| ADMIN_ALLOWED_ORIGINS | (없음) | Admin UI 허용 origin 목록 (쉼표 구분). 미설정 시 ALLOWED_ORIGINS 값 사용 |
-| LOG_LEVEL | info | Winston 로깅 레벨 (`error` \| `warn` \| `info` \| `debug`) |
-| WORKER_ID | single | 멀티 프로세스 환경 워커 식별자. 로그와 Redis 키에 포함되어 워커 간 구분에 사용 |
 
 #### OAuth 토큰 TTL
 
-OAuth 액세스 토큰과 리프레시 토큰의 TTL은 `SESSION_TTL_MINUTES`에서 파생된다. 별도의 환경변수는 없다.
+v2.7.0부터 OAuth 액세스 토큰과 리프레시 토큰 TTL을 독립 환경변수로 제어할 수 있다. `OAUTH_TOKEN_TTL_SECONDS`는 deprecated이며 `OAUTH_ACCESS_TTL_SECONDS`로 마이그레이션해야 한다.
 
-| 내부 상수 | 산출 공식 | 기본값 |
-|-----------|----------|--------|
-| OAUTH_TOKEN_TTL_SECONDS | SESSION_TTL_MINUTES * 60 | 2592000 (30일) |
-| OAUTH_REFRESH_TTL_SECONDS | OAUTH_TOKEN_TTL_SECONDS * 2 | 5184000 (60일) |
+| 환경변수 | 기본값 | 설명 |
+|----------|--------|------|
+| OAUTH_ACCESS_TTL_SECONDS | 3600 | OAuth 액세스 토큰 TTL (초). 기본값 1시간 |
+| OAUTH_REFRESH_TTL_SECONDS | 604800 | OAuth 리프레시 토큰 TTL (초). 기본값 7일 |
+| ~~OAUTH_TOKEN_TTL_SECONDS~~ | deprecated | `OAUTH_ACCESS_TTL_SECONDS`의 하위 호환 alias. 동일값으로 동작하나 신규 설정에는 `OAUTH_ACCESS_TTL_SECONDS` 사용 권장 |
 
-슬라이딩 윈도우: OAuth 인증된 요청이 들어올 때마다 해당 액세스 토큰의 Redis TTL을 `OAUTH_TOKEN_TTL_SECONDS`로 재설정한다. 도구를 계속 사용하는 한 토큰이 만료되지 않으며, `SESSION_TTL_MINUTES`를 변경하면 세션 TTL과 OAuth 토큰 TTL이 함께 조정된다.
+슬라이딩 윈도우: OAuth 인증된 요청이 들어올 때마다 해당 액세스 토큰의 Redis TTL을 `OAUTH_ACCESS_TTL_SECONDS`로 재설정한다. 도구를 계속 사용하는 한 토큰이 만료되지 않는다.
 
 ### PostgreSQL
 
@@ -566,9 +567,9 @@ EMBEDDING_DIMENSIONS=768
 | 024 | migration-024-workspace.sql | fragments.workspace VARCHAR(255) NULL |
 | 025 | migration-025-case-columns.sql | fragments에 case_id + structured episode 컬럼 |
 | 026 | migration-026-case-events.sql | case_events + case_event_edges + fragment_evidence 테이블 |
-| 027 | migration-027-v25-reconsolidation-episode-spreading.sql | search_events/case_events key_id 타입 수정, fragment_links 재통합 컬럼 + link_reconsolidations, case_events idempotency_key, fragments.keywords GIN 인덱스 |
-| 028 | migration-028-v253-improvements.sql | 복합 인덱스: (agent_id, topic, created_at DESC) topic fallback 검색 최적화, (key_id, agent_id, importance DESC) WHERE valid_to IS NULL API 키 격리 조회 최적화. migration-016의 idx_frag_agent_topic을 대체한다 |
-| 029 | migration-029-search-param-thresholds.sql | search_param_thresholds 테이블 (SearchParamAdaptor 온라인 학습 저장소, key_id NOT NULL DEFAULT -1) |
+| 028 | migration-028-composite-indexes.sql | 복합 인덱스: (agent_id, topic, created_at DESC) topic fallback 검색 최적화, (key_id, agent_id, importance DESC) WHERE valid_to IS NULL API 키 격리 조회 최적화. migration-016의 idx_frag_agent_topic을 대체한다 |
+| 030 | migration-030-search-param-thresholds-key-text.sql | search_param_thresholds.key_id 타입 INTEGER→TEXT 변환. fragments.key_id가 migration-027부터 TEXT(UUID)로 전환되어 SearchParamAdaptor 적응형 학습이 무력화되던 버그 수정. 기존 sentinel -1 → '-1' 문자열 보존 |
+| 031 | migration-031-content-hash-per-key.sql | content_hash 전역 UNIQUE 인덱스(idx_frag_hash) 폐기 후 partial unique index 2개로 전환하여 크로스 테넌트 ON CONFLICT 경로 차단. master(key_id IS NULL) 전용 `uq_frag_hash_master`, API key(key_id IS NOT NULL) 전용 복합 `uq_frag_hash_per_key` |
 
 ---
 

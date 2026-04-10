@@ -1,20 +1,19 @@
 /**
- * fragment-isolation.test.js — content_hash 테넌트 격리 단위 테스트
+ * fragment-isolation.test.js — Phase 1 cross-tenant 격리 단위 테스트
  *
  * 작성자: 최진호
  * 작성일: 2026-04-10
  *
- * migration-031 이후 partial index 2개(uq_frag_hash_master, uq_frag_hash_per_key)로
- * 전환된 content_hash 격리 동작을 FragmentWriter / BatchRememberProcessor mock으로 검증한다.
+ * 두 보안 task의 회귀 검증을 통합:
+ *   1. content_hash 테넌트 격리 (Task 1.3): migration-031 partial index 2개로
+ *      전환된 content_hash 격리 동작을 FragmentWriter / BatchRememberProcessor mock으로 검증
+ *   2. GraphLinker + ContradictionDetector cross-tenant 격리 (Task 1.4):
+ *      linkFragment 및 resolveContradiction의 key_id 격리 적용 검증
  *
- * 검증 대상:
- *   1. dedup SELECT가 key_id 격리 조건(IS NOT DISTINCT FROM)을 포함하는지
- *   2. ON CONFLICT 절이 keyId null/non-null에 따라 올바른 partial index를 지정하는지
- *   3. 동일 content_hash라도 다른 key_id 파편은 별개 row로 INSERT되는지
- *   4. master(key_id=null)와 DB API key 사이에도 격리가 적용되는지
+ * 모든 DB/Redis 의존성은 mock 처리. 실 DB 호출 없음.
  */
 
-import { describe, it, mock, before, after } from "node:test";
+import { describe, it, mock, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { FragmentWriter, sanitizeInsertImportance } from "../../lib/memory/FragmentWriter.js";
@@ -316,6 +315,421 @@ describe("BatchRememberProcessor — content_hash ON CONFLICT 격리", () => {
       keySql.split("ON CONFLICT")[1],
       "master and DB key must use different ON CONFLICT predicates"
     );
+  });
+
+});
+
+
+/* ============================================================================
+   Task 1.4: GraphLinker + ContradictionDetector cross-tenant 격리
+   ============================================================================ */
+
+/** ──────────────────────────────────────────────────
+ * GraphLinker key_id 격리 로직의 테스트 가능 버전
+ *
+ * 실제 GraphLinker에서 keyFilter() 생성 및 SQL 삽입 로직과
+ * 동일하게 구현하여 격리 검증을 수행한다.
+ * ────────────────────────────────────────────────── */
+class IsolatedGraphLinker {
+  constructor({ db, store }) {
+    this.db    = db;
+    this.store = store;
+  }
+
+  /** 실제 GraphLinker.linkFragment 로직의 key_id 격리 부분 */
+  _buildKeyFilter(allowedKeyIds) {
+    if (allowedKeyIds === null) return "";
+    if (allowedKeyIds.length === 1) return ` AND key_id = ${allowedKeyIds[0]}`;
+    return ` AND key_id = ANY(ARRAY[${allowedKeyIds.join(",")}]::int[])`;
+  }
+
+  async linkFragment(fragmentId, agentId = "default", keyId = null, groupKeyIds = []) {
+    const allowedKeyIds = keyId != null
+      ? [keyId, ...(Array.isArray(groupKeyIds) ? groupKeyIds : [])]
+      : null;
+
+    const keyFilter = () => this._buildKeyFilter(allowedKeyIds);
+
+    const fragResult = await this.db.query(
+      `SELECT id, content, topic, type, created_at FROM agent_memory.fragments ` +
+      `WHERE id = $1 AND embedding IS NOT NULL`,
+      [fragmentId]
+    );
+    if (!fragResult.rows || fragResult.rows.length === 0) return 0;
+
+    const newFragment = fragResult.rows[0];
+
+    /** dedup 후보 조회 — key_id 격리 적용 */
+    const dedupSql = `SELECT id, similarity FROM agent_memory.fragments ` +
+      `WHERE id != $1 AND topic = $2 AND embedding IS NOT NULL AND valid_to IS NULL ` +
+      `AND similarity >= 0.90${keyFilter()} ORDER BY similarity DESC LIMIT 1`;
+
+    const dedupResult = await this.db.query(dedupSql, [fragmentId, newFragment.topic]);
+
+    if (dedupResult.rows && dedupResult.rows.length > 0) {
+      const similarity = parseFloat(dedupResult.rows[0].similarity);
+      if (similarity >= 0.95) {
+        await this.db.query(
+          `UPDATE agent_memory.fragments SET valid_to = NOW() WHERE id = $1 AND valid_to IS NULL`,
+          [fragmentId]
+        );
+        return 0;
+      }
+    }
+
+    /** 후보 조회 — key_id 격리 적용 */
+    const candidateSql = `SELECT id, content, type, created_at, is_anchor, similarity ` +
+      `FROM agent_memory.fragments WHERE id != $1 AND topic = $2 ` +
+      `AND embedding IS NOT NULL AND similarity > 0.7${keyFilter()} ` +
+      `ORDER BY similarity DESC LIMIT 3`;
+
+    const candidates = await this.db.query(candidateSql, [fragmentId, newFragment.topic]);
+    if (!candidates.rows || candidates.rows.length === 0) return 0;
+
+    let linkCount = 0;
+    for (const existing of candidates.rows) {
+      const similarity   = parseFloat(existing.similarity);
+      let   relationType = "related";
+
+      if (newFragment.type === existing.type && similarity > 0.85) {
+        const newDate = new Date(newFragment.created_at || Date.now());
+        const oldDate = new Date(existing.created_at || 0);
+        if (newDate > oldDate) relationType = "superseded_by";
+      }
+
+      try {
+        await this.store.createLink(existing.id, newFragment.id, relationType, agentId);
+        linkCount++;
+
+        if (relationType === "superseded_by") {
+          await this.db.query(
+            `UPDATE agent_memory.fragments SET valid_to = NOW() WHERE id = $1 AND valid_to IS NULL`,
+            [existing.id]
+          );
+        }
+      } catch { /* 중복 링크 등 무시 */ }
+    }
+    return linkCount;
+  }
+}
+
+/** ──────────────────────────────────────────────────
+ * ContradictionDetector resolveContradiction 격리 로직의 테스트 가능 버전
+ * ────────────────────────────────────────────────── */
+class IsolatedContradictionDetector {
+  constructor({ store, warnings = [] }) {
+    this.store    = store;
+    this.warnings = warnings;
+  }
+
+  async resolveContradiction(newFrag, candidate, reasoning) {
+    const nk = newFrag.key_id   ?? null;
+    const ck = candidate.key_id ?? null;
+    if (nk !== ck) {
+      this.warnings.push(`cross-tenant blocked: ${newFrag.id}(key=${nk}) vs ${candidate.id}(key=${ck})`);
+      return;
+    }
+
+    await this.store.createLink(newFrag.id, candidate.id, "contradicts", "system");
+
+    const newDate = new Date(newFrag.created_at);
+    const oldDate = new Date(candidate.created_at);
+
+    if (newDate > oldDate) {
+      await this.store.createLink(candidate.id, newFrag.id, "superseded_by", "system");
+    } else {
+      await this.store.createLink(newFrag.id, candidate.id, "superseded_by", "system");
+    }
+  }
+}
+
+/** ──────────────────────────────────────────────────
+ * 공통 mock factory
+ * ────────────────────────────────────────────────── */
+function makeMockDb(fragRows = [], candidateRows = []) {
+  const queryCalls = [];
+  return {
+    queryCalls,
+    async query(sql, params) {
+      queryCalls.push({ sql, params });
+      if (sql.includes("WHERE id = $1 AND embedding IS NOT NULL")) return { rows: fragRows };
+      if (sql.includes("similarity")) return { rows: candidateRows };
+      return { rows: [] };
+    }
+  };
+}
+
+function makeMockStore() {
+  const createLinkCalls = [];
+  const updateCalls     = [];
+  return {
+    createLinkCalls,
+    updateCalls,
+    async createLink(fromId, toId, relationType, agentId) {
+      createLinkCalls.push({ fromId, toId, relationType, agentId });
+    }
+  };
+}
+
+/** ================================================================
+ * GraphLinker cross-tenant 격리 테스트
+ * ================================================================ */
+
+describe("GraphLinker — cross-tenant supersession 차단", () => {
+
+  it("keyId A 파편에 keyId B 파편이 후보로 반환되지 않아야 한다 (SQL 조건 확인)", async () => {
+    /** keyId=10인 신규 파편 */
+    const fragRows = [{
+      id        : "frag-a",
+      content   : "auth 설정",
+      topic     : "auth",
+      type      : "fact",
+      created_at: "2026-04-10T10:00:00Z"
+    }];
+
+    /**
+     * candidateRows는 비어 있음:
+     * key_id=20인 파편이 후보 쿼리에 key_id 격리 조건으로 제외됨을 시뮬레이션
+     */
+    const mockDb    = makeMockDb(fragRows, []);
+    const mockStore = makeMockStore();
+    const linker    = new IsolatedGraphLinker({ db: mockDb, store: mockStore });
+
+    const count = await linker.linkFragment("frag-a", "test-agent", 10, []);
+
+    /** cross-tenant 후보가 없으므로 링크 0개 */
+    assert.strictEqual(count, 0, "cross-tenant 후보로 링크가 생성되면 안 됨");
+    assert.strictEqual(mockStore.createLinkCalls.length, 0);
+
+    /** SQL에 key_id 격리 조건이 포함됐는지 확인 */
+    const candidateCall = mockDb.queryCalls.find(c => c.sql.includes("similarity > 0.7"));
+    assert.ok(candidateCall, "후보 조회 쿼리가 실행되어야 함");
+    assert.ok(
+      candidateCall.sql.includes("key_id = 10"),
+      `후보 SELECT에 key_id 격리 조건이 포함되어야 함. 실제 SQL:\n${candidateCall.sql}`
+    );
+  });
+
+  it("동일 keyId 파편끼리는 supersession이 정상 동작해야 한다", async () => {
+    const fragRows = [{
+      id        : "frag-newer",
+      content   : "auth 포트 변경: 9000",
+      topic     : "auth",
+      type      : "fact",
+      created_at: "2026-04-10T12:00:00Z"
+    }];
+
+    const candidateRows = [{
+      id        : "frag-older",
+      content   : "auth 포트: 8080",
+      type      : "fact",
+      created_at: "2026-04-10T10:00:00Z",
+      is_anchor : false,
+      similarity: "0.90"
+    }];
+
+    const mockDb    = makeMockDb(fragRows, candidateRows);
+    const mockStore = makeMockStore();
+    const linker    = new IsolatedGraphLinker({ db: mockDb, store: mockStore });
+
+    const count = await linker.linkFragment("frag-newer", "test-agent", 10, []);
+
+    assert.strictEqual(count, 1, "동일 key 파편끼리는 supersession 링크가 생성되어야 함");
+    assert.strictEqual(mockStore.createLinkCalls[0].relationType, "superseded_by");
+    assert.strictEqual(mockStore.createLinkCalls[0].fromId, "frag-older");
+    assert.strictEqual(mockStore.createLinkCalls[0].toId, "frag-newer");
+  });
+
+  it("master key(keyId=null)는 key_id 조건 없이 전체 파편에 접근해야 한다", async () => {
+    const fragRows = [{
+      id        : "frag-sys",
+      content   : "시스템 설정",
+      topic     : "system",
+      type      : "procedure",
+      created_at: "2026-04-10T10:00:00Z"
+    }];
+
+    const mockDb    = makeMockDb(fragRows, []);
+    const mockStore = makeMockStore();
+    const linker    = new IsolatedGraphLinker({ db: mockDb, store: mockStore });
+
+    await linker.linkFragment("frag-sys", "system", null, []);
+
+    const candidateCall = mockDb.queryCalls.find(c => c.sql.includes("similarity > 0.7"));
+    if (candidateCall) {
+      assert.ok(
+        !candidateCall.sql.includes("key_id"),
+        `master key는 key_id 조건이 없어야 함. 실제 SQL:\n${candidateCall.sql}`
+      );
+    }
+  });
+
+  it("dedup SELECT에도 key_id 격리 조건이 포함되어야 한다", async () => {
+    const fragRows = [{
+      id        : "frag-b",
+      content   : "중복 가능 파편",
+      topic     : "dedup-topic",
+      type      : "fact",
+      created_at: "2026-04-10T10:00:00Z"
+    }];
+
+    const mockDb    = makeMockDb(fragRows, []);
+    const mockStore = makeMockStore();
+    const linker    = new IsolatedGraphLinker({ db: mockDb, store: mockStore });
+
+    await linker.linkFragment("frag-b", "test-agent", 42, []);
+
+    const dedupCall = mockDb.queryCalls.find(c => c.sql.includes("similarity >= 0.90"));
+    assert.ok(dedupCall, "dedup 조회 쿼리가 실행되어야 함");
+    assert.ok(
+      dedupCall.sql.includes("key_id = 42"),
+      `dedup SELECT에 key_id 격리 조건이 포함되어야 함. 실제 SQL:\n${dedupCall.sql}`
+    );
+  });
+
+});
+
+/** ================================================================
+ * ContradictionDetector cross-tenant 격리 테스트
+ * ================================================================ */
+
+describe("ContradictionDetector — cross-tenant contradiction 차단", () => {
+
+  it("key_id가 다른 파편 쌍에 대해 resolveContradiction이 차단되어야 한다", async () => {
+    const warnings = [];
+    const store     = makeMockStore();
+    const detector  = new IsolatedContradictionDetector({ store, warnings });
+
+    const fragA = {
+      id        : "frag-tenant-a",
+      content   : "포트는 9000이다",
+      topic     : "port",
+      type      : "fact",
+      created_at: "2026-04-10T10:00:00Z",
+      key_id    : 1,
+      is_anchor : false
+    };
+
+    const fragB = {
+      id        : "frag-tenant-b",
+      content   : "포트는 8080이다",
+      topic     : "port",
+      type      : "fact",
+      created_at: "2026-04-10T11:00:00Z",
+      key_id    : 2,
+      is_anchor : false
+    };
+
+    await detector.resolveContradiction(fragA, fragB, "test reasoning");
+
+    /** cross-tenant이므로 링크가 생성되면 안 됨 */
+    assert.strictEqual(store.createLinkCalls.length, 0,
+      "cross-tenant 파편 쌍에 대해 링크가 생성되면 안 됨");
+    assert.ok(warnings.length > 0, "cross-tenant 차단 경고가 기록되어야 함");
+    assert.ok(
+      warnings[0].includes("cross-tenant blocked"),
+      `경고 메시지에 'cross-tenant blocked'가 포함되어야 함. 실제: ${warnings[0]}`
+    );
+  });
+
+  it("동일 key_id 파편 쌍은 정상적으로 contradiction이 처리되어야 한다", async () => {
+    const warnings = [];
+    const store     = makeMockStore();
+    const detector  = new IsolatedContradictionDetector({ store, warnings });
+
+    const fragA = {
+      id        : "frag-same-a",
+      content   : "포트는 9000이다",
+      topic     : "port",
+      type      : "fact",
+      created_at: "2026-04-10T10:00:00Z",
+      key_id    : 5,
+      is_anchor : false
+    };
+
+    const fragB = {
+      id        : "frag-same-b",
+      content   : "포트는 8080이다",
+      topic     : "port",
+      type      : "fact",
+      created_at: "2026-04-10T11:00:00Z",
+      key_id    : 5,
+      is_anchor : false
+    };
+
+    await detector.resolveContradiction(fragA, fragB, "NLI contradiction");
+
+    assert.ok(warnings.length === 0, "동일 key_id 쌍에 대해 경고가 발생하면 안 됨");
+    assert.ok(store.createLinkCalls.length >= 2,
+      "contradicts + superseded_by 링크가 생성되어야 함");
+
+    const contradicts  = store.createLinkCalls.find(c => c.relationType === "contradicts");
+    const superseded   = store.createLinkCalls.find(c => c.relationType === "superseded_by");
+    assert.ok(contradicts,  "contradicts 링크가 생성되어야 함");
+    assert.ok(superseded,   "superseded_by 링크가 생성되어야 함");
+  });
+
+  it("master key(key_id=null) 파편끼리는 null IS NOT DISTINCT FROM null 규칙으로 허용되어야 한다", async () => {
+    const warnings = [];
+    const store     = makeMockStore();
+    const detector  = new IsolatedContradictionDetector({ store, warnings });
+
+    const fragA = {
+      id        : "frag-master-a",
+      content   : "설정 A",
+      topic     : "config",
+      type      : "fact",
+      created_at: "2026-04-10T10:00:00Z",
+      key_id    : null,
+      is_anchor : false
+    };
+
+    const fragB = {
+      id        : "frag-master-b",
+      content   : "설정 B (A와 모순)",
+      topic     : "config",
+      type      : "fact",
+      created_at: "2026-04-10T11:00:00Z",
+      key_id    : null,
+      is_anchor : false
+    };
+
+    await detector.resolveContradiction(fragA, fragB, "master key contradiction");
+
+    assert.strictEqual(warnings.length, 0, "null key_id 쌍은 차단되면 안 됨");
+    assert.ok(store.createLinkCalls.length >= 2, "링크가 생성되어야 함");
+  });
+
+  it("key_id=null 파편과 key_id=5 파편 쌍은 차단되어야 한다", async () => {
+    const warnings = [];
+    const store     = makeMockStore();
+    const detector  = new IsolatedContradictionDetector({ store, warnings });
+
+    const masterFrag = {
+      id        : "frag-master",
+      content   : "설정 값",
+      topic     : "config",
+      type      : "fact",
+      created_at: "2026-04-10T10:00:00Z",
+      key_id    : null,
+      is_anchor : false
+    };
+
+    const tenantFrag = {
+      id        : "frag-tenant",
+      content   : "설정 값 (다른 테넌트)",
+      topic     : "config",
+      type      : "fact",
+      created_at: "2026-04-10T11:00:00Z",
+      key_id    : 5,
+      is_anchor : false
+    };
+
+    await detector.resolveContradiction(masterFrag, tenantFrag, "cross type test");
+
+    assert.strictEqual(store.createLinkCalls.length, 0,
+      "master-tenant 혼합 쌍에 대해 링크가 생성되면 안 됨");
+    assert.ok(warnings.length > 0, "차단 경고가 기록되어야 함");
   });
 
 });

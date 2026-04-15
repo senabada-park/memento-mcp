@@ -233,6 +233,29 @@ API 키의 일일 호출 제한을 변경한다. 마스터 키 인증 필요.
 
 각 반환 파편에는 `key_id` 필드가 포함된다. master key 호출 시 타 API 키 소유 파편도 반환될 수 있으며, 이 경우 `key_id` 값으로 소유 키를 식별할 수 있다. API key 호출 시에는 자신이 소유한 파편(`key_id` 일치) 또는 그룹 공유 파편만 반환된다.
 
+`explanation` (v2.8.0+, `MEMENTO_SYMBOLIC_EXPLAIN=true` 시에만 포함): 해당 파편이 검색 결과에 포함된 이유를 최대 3개 reason code로 설명한다.
+
+```json
+{
+  "fragment": {
+    "id": "...",
+    "explanations": [
+      { "code": "direct_keyword_match",  "detail": "L2 형태소/키워드 매치",  "ruleVersion": "v1" },
+      { "code": "graph_neighbor_1hop",   "detail": "그래프 이웃 1-hop",       "ruleVersion": "v1" }
+    ]
+  }
+}
+```
+
+reason code 목록 (최대 3개):
+
+- `direct_keyword_match` — L2 형태소/키워드 매칭으로 결과에 포함됨
+- `semantic_similarity` — L3 pgvector 임베딩 유사도로 결과에 포함됨
+- `graph_neighbor_1hop` — L2.5 그래프 이웃 1-hop으로 결과에 포함됨
+- `temporal_proximity` — timeRange 필터 또는 ±24h 시간 인접성으로 결과에 포함됨
+- `case_cohort_member` — caseMode 경로에서 동일 case_id 코호트로 결과에 포함됨
+- `recent_activity_ema` — ema_activation 상위로 가점 부여되어 결과에 포함됨
+
 ### depth enum
 
 | 값 | 대상 유형 | 용도 |
@@ -308,6 +331,30 @@ API 키의 일일 호출 제한을 변경한다. 마스터 키 인증 필요.
 | phase | string | - | 작업 단계 (예: planning, debugging, verification) |
 | resolutionStatus | string | - | 작업 해결 상태 (open, resolved, abandoned) |
 | assertionStatus | string | - | 파편의 신뢰도 수준 (observed, inferred, verified, rejected). 기본값: observed |
+
+### 응답
+
+```json
+{
+  "fragment": {
+    "id": "...",
+    "content": "...",
+    "type": "decision",
+    "importance": 0.8,
+    "validation_warnings": []
+  }
+}
+```
+
+`validation_warnings` (v2.8.0+): PolicyRules soft gating violations 배열. `MEMENTO_SYMBOLIC_POLICY_RULES=false` (기본값) 상태에서는 항상 빈 배열 또는 필드 생략. 활성화 시 다음 5가지 predicate 중 실패한 것이 누적된다:
+
+- `decisionHasRationale` — decision 타입이 linked_to 2건 이상 또는 근거 키워드 미포함
+- `errorHasResolutionPath` — error 타입이 cause/fix 키워드 또는 resolution_status 미포함
+- `procedureHasStepMarkers` — procedure 타입에 번호/단계 마커 부재
+- `caseIdHasResolutionStatus` — case_id 보유 파편이 resolution_status 미설정
+- `assertionNotContradictory` — 기존 assertion과 polarity 충돌
+
+경고는 soft gate이므로 저장을 차단하지 않는다. `api_keys.symbolic_hard_gate=true` 설정 시 경고 발생 파편은 저장 거부된다.
 
 ---
 

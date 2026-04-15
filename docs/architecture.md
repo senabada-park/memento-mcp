@@ -831,3 +831,80 @@ recall 호출 시 `contextText` 파라미터를 전달하면 관련 파편의 `e
 활성화된 파편은 검색 결과 랭킹 시 `computeEmaRankBoost()`를 통해 importance 부스트를 받아 맥락 연관성 높은 결과가 상위에 배치된다.
 
 ---
+
+## Symbolic Memory Layer (v2.8.0, opt-in)
+
+v2.7.0 확률론적 검색 파이프라인 위에 얹은 검증·해설 계층. 기본 전면 비활성. 기존 컴포넌트 대체 없음.
+
+### 원칙
+
+- 검증만 담당. FragmentSearch/RRF/Reranker/SpreadingActivation 경로는 불변
+- 모든 플래그 기본 false → 기본값 상태에서 v2.7.0 동작 바이트 단위 동일
+- Fail-open: detector 오류는 swallow, SymbolicOrchestrator timeout(50ms) 초과 시 fallback
+- Tenant isolation: v2.7.0 14건 수정 + v2.8.0 Phase 0.5 SessionLinker 보완(4-arg) = 전수 커버
+
+### Hook Chain (FragmentSearch.search 라인 88 이후)
+
+```
+probabilistic result
+    │
+    ├── shadow hook (Phase 1: observeLatency 기록만)
+    │
+    ├── explain hook (Phase 2: ExplanationBuilder.annotate)
+    │       └── 6 reason codes: direct_keyword_match / semantic_similarity
+    │           / graph_neighbor_1hop / temporal_proximity
+    │           / case_cohort_member / recent_activity_ema
+    │
+    ├── cbr filter (Phase 5: CbrEligibility 4 제약)
+    │       └── tenant_match / has_case_id / not_quarantine / resolved_state
+    │
+    └── annotated result → caller
+```
+
+### 9 Core Modules + 5 Rule Files
+
+| 모듈 | 역할 | Phase |
+|------|------|-------|
+| SymbolicOrchestrator | rule_version / correlation_id / timeout / fallback 관리 | 0 |
+| SymbolicMetrics | prom-client 4종 (claim/warning/gate_blocked/latency) | 0 |
+| ClaimExtractor | 형태소 기반 polarity claim 추출 | 1 |
+| ClaimStore | TEXT key_id + `IS NOT DISTINCT FROM` 격리 | 1 |
+| ClaimConflictDetector | polarity 충돌 + severity heuristic | 3 |
+| LinkIntegrityChecker | cycle 탐지 (sessionLinker.wouldCreateCycle 재사용) | 3 |
+| ExplanationBuilder | 6 reason codes annotate (불변 복사) | 2 |
+| PolicyRules | 5 predicate soft gating | 4 |
+| CbrEligibility | 4 제약 CBR 필터 | 5 |
+
+Rule files (`lib/symbolic/rules/v1/`): `explain.js`, `link-integrity.js`, `claim-conflict.js`, `policy.js`, `proactive-gate.js`
+
+### Storage Schema
+
+**migration-032: fragment_claims**
+- `fragment_id TEXT REFERENCES fragments(id)`
+- `key_id TEXT` (v2.7.0 migration-031 content-hash 패턴 복제)
+- `rule_version TEXT`
+- `polarity TEXT`, `subject TEXT`, `predicate TEXT`
+- `validation_warnings JSONB`
+- Partial unique 2개: `(fragment_id) WHERE key_id IS NULL` / `(fragment_id, key_id) WHERE key_id IS NOT NULL`
+
+**migration-033: api_keys.symbolic_hard_gate**
+- `BOOLEAN DEFAULT false`
+- 키 단위 opt-in으로 soft → hard gate 전환
+
+### Observability
+
+Prometheus 메트릭 4종 (label: `rule`, `phase`):
+- `memento_symbolic_claim_extracted_total` — ClaimExtractor 추출 건수
+- `memento_symbolic_warning_total` — advisory warning 생성 건수
+- `memento_symbolic_gate_blocked_total{phase}` — phase별 block 건수 (phase=cbr|proactive 등)
+- `memento_symbolic_op_latency_ms` — orchestrator 호출 latency histogram
+
+### 단계적 활성화
+
+CHANGELOG.md v2.8.0 Migration Guide 8단계 참조.
+
+### Tenant Isolation (Phase 0.5)
+
+v2.7.0 9260ff2 tenant isolation 수정이 놓친 SessionLinker.wouldCreateCycle 사각지대를 봉인했다. `store.isReachable` 4-arg 시그니처로 확장, 호출부 4곳(`autoLinkSessionFragments`, `ReflectProcessor`, `MemoryManager._autoLinkSessionFragments`, `_wouldCreateCycle`) 전수 전파. 회귀 가드는 `tests/unit/tenant-isolation.test.js`에 6건 신규.
+
+---

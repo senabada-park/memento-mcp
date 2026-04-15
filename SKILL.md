@@ -1071,6 +1071,38 @@ recall 또는 context 응답에 `_memento_hint` 필드가 있으면:
 | Planner 역할로 고수준 계획 수립 | recall(depth="high-level") |
 | Executor 역할로 구체적 절차 참조 | recall(depth="tool-level") |
 
+## v2.8.0 Symbolic Memory 활용 (opt-in)
+
+모든 `MEMENTO_SYMBOLIC_*` 플래그는 기본 `false`다. 아래 기능은 해당 플래그를 명시적으로 활성화한 환경에서만 동작한다.
+
+### validation_warnings 해석
+
+`remember` 응답에 `validation_warnings` 배열이 포함된다 (`MEMENTO_SYMBOLIC_POLICY_RULES=true` 시). 배열이 비어있지 않으면 다음 중 하나에 해당한다:
+
+- `decisionHasRationale` — decision 타입인데 근거가 약함 → `linkedTo`에 2건 이상 연결하거나 "왜냐하면", "because" 같은 근거 키워드 포함
+- `errorHasResolutionPath` — error 타입인데 해결 경로 부재 → cause/fix 키워드 또는 `resolutionStatus` 명시
+- `procedureHasStepMarkers` — procedure 타입인데 단계 부재 → "1.", "2.", "먼저", "다음" 등 마커 포함
+- `caseIdHasResolutionStatus` — case_id 보유 파편인데 resolution_status 미설정 → `resolutionStatus: "resolved"` 등 명시
+- `assertionNotContradictory` — 기존 assertion과 충돌 → `amend` 또는 `forget`으로 과거 파편 정리
+
+경고는 soft gate이므로 기본적으로 저장을 차단하지 않는다. `api_keys.symbolic_hard_gate=true`로 전환하면 해당 키는 경고 발생 시 저장 거부된다.
+
+### explanation 필드 활용
+
+`recall` 응답 파편에 `explanations` 배열이 포함된다 (`MEMENTO_SYMBOLIC_EXPLAIN=true` 시). 해당 파편이 왜 검색 결과에 포함됐는지 최대 3개 이유를 제공한다. 클라이언트가 파편의 관련성을 UI에 표시하거나, LLM 컨텍스트에 설명을 주입할 때 활용한다.
+
+reason code 6종:
+- `direct_keyword_match` — L2 형태소 매칭
+- `semantic_similarity` — L3 pgvector 임베딩
+- `graph_neighbor_1hop` — L2.5 그래프 이웃
+- `temporal_proximity` — 시간적 근접
+- `case_cohort_member` — case_mode 코호트
+- `recent_activity_ema` — ema_activation 가점
+
+단계적 활성화 권장 순서: `MEMENTO_SYMBOLIC_ENABLED=true` → `MEMENTO_SYMBOLIC_SHADOW=true` + `MEMENTO_SYMBOLIC_CLAIM_EXTRACTION=true` → `scripts/backfill-claims.js --dry-run` 선행 → `MEMENTO_SYMBOLIC_EXPLAIN=true` → `MEMENTO_SYMBOLIC_POLICY_RULES=true`.
+
+---
+
 ## 안티패턴
 
 다음 행동은 Memento를 무력화한다. 반드시 피할 것.
@@ -1087,3 +1119,6 @@ recall 또는 context 응답에 `_memento_hint` 필드가 있으면:
 | 불필요한 remember 남발 | fragment_limit 쿼터 소진, 노이즈 증가로 검색 품질 저하 | 저장 전 "다음 세션에서 필요한가?" 자문, 일시적 정보는 저장하지 않음 |
 | importance 미지정 (모든 파편 0.5) | recall 시 중요/비중요 파편 구분 불가, 핵심 정보가 노이즈에 묻힘 | 상황별 중요도 기본값 표 참조, 최소 0.6 이상 명시 |
 | keywords 미지정 | 자동 추출에 의존하면 프로젝트명/호스트명 등 핵심 키워드 누락 | 프로젝트명 + 토픽 + 고유 식별자를 keywords에 명시적으로 포함 |
+| validation_warnings 무시 후 반복 remember | 동일 경고 파편이 누적되면 symbolic_hard_gate 활성화 시 전면 차단됨 | 경고 내용에 따라 content/linkedTo/resolutionStatus를 보강 후 재저장 |
+| recall 결과의 explanations reasonCodes를 fragment content에 복사 저장 | 검색 품질 메타데이터는 저장하면 안 됨. 노이즈로 검색 정밀도 저하 | reasonCodes는 UI 표시나 컨텍스트 힌트용으로만 사용, 저장 금지 |
+| Shadow mode 없이 Phase 2+ 직행 | 기존 데이터의 claim 백필 없이 explain/policy 활성화 시 경고 오탐 증가 | `MEMENTO_SYMBOLIC_SHADOW=true` + `scripts/backfill-claims.js --dry-run` 선행 후 단계적 활성화 |

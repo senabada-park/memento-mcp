@@ -9,8 +9,9 @@
 -- 참조: migration-031-content-hash-per-key.sql 패턴 (master NULL / tenant 분리 partial unique 2개)
 --
 -- 주의사항:
---   1) fragments.key_id 는 TEXT 타입 (migration-004 라인 11 확인). INTEGER 아님.
---      fragment_claims.key_id 도 동일하게 TEXT 로 맞춰야 FK 의미론 일치.
+--   1) fragments.key_id 와 fragments.id 모두 TEXT 타입 (migration-004 + 실측 확인).
+--      fragment_claims.key_id / fragment_id 모두 TEXT 로 맞춰야 FK 의미론 일치.
+--      fragment_id 에 UUID 사용 시 타입 불일치로 FK 제약 실패함.
 --   2) ClaimStore.insert 는 fragment_claims.key_id 가 fragments.key_id 와 일치하는지
 --      write-time 에 확인. 위반 시 memento_tenant_isolation_blocked_total 카운터 증가.
 --   3) master(NULL) / tenant(TEXT) 분리 partial unique 인덱스로 ON CONFLICT 경로에서
@@ -25,7 +26,7 @@ BEGIN;
 -- 1) fragment_claims 테이블 생성
 CREATE TABLE IF NOT EXISTS agent_memory.fragment_claims (
     id             BIGSERIAL PRIMARY KEY,
-    fragment_id    UUID NOT NULL REFERENCES agent_memory.fragments(id) ON DELETE CASCADE,
+    fragment_id    TEXT NOT NULL REFERENCES agent_memory.fragments(id) ON DELETE CASCADE,
     key_id         TEXT NULL,
     subject        TEXT NOT NULL,
     predicate      TEXT NOT NULL,

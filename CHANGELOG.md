@@ -1,5 +1,86 @@
 # Changelog
 
+## [2.8.0] - 2026-04-16
+
+### Added — Symbolic Memory Layer (opt-in, 기본 전면 비활성)
+
+v2.7.0 확률론적 검색(FragmentSearch/RRF/Reranker/SpreadingActivation) 위에 feature-flag 기반 심볼릭 검증 계층을 추가. 기존 경로 대체 없음. 검증/해설/advisory warning만 담당. 모든 `MEMENTO_SYMBOLIC_*` 플래그 기본 false → 프로덕션 경로 영향 0건.
+
+**Phase 0: Foundation**
+- `lib/symbolic/` 9개 core 모듈 + `lib/symbolic/rules/v1/` 5개 규칙 파일 (SymbolicOrchestrator, ClaimStore, ClaimExtractor, ClaimConflictDetector, LinkIntegrityChecker, ExplanationBuilder, CbrEligibility, PolicyRules, SymbolicMetrics)
+- `config/symbolic.js`: Object.freeze 12개 환경변수 (9 boolean 플래그 + `MEMENTO_SYMBOLIC_RULE_VERSION` + `MEMENTO_SYMBOLIC_TIMEOUT_MS` + `MEMENTO_SYMBOLIC_MAX_CANDIDATES`)
+- `migration-032-fragment-claims.sql`: `fragment_claims` 테이블 + v2.7.0 migration-031 content-hash 테넌트 격리 패턴 복제 (master NULL / tenant 분리 partial unique 2개) + `validation_warnings` JSONB
+- `migration-033-symbolic-hard-gate.sql`: `api_keys.symbolic_hard_gate BOOLEAN DEFAULT false` — 키 단위 opt-in
+- `scripts/benchmark-hot-path.js` + `scripts/baseline-v27.json` — 회귀 감시 baseline
+- Rollback 파일은 `rollback-migration-NNN-*.sql` 네이밍 (migrate.js auto-pickup glob 회피)
+
+**Phase 1: Shadow Mode + Claim Backfill**
+- `RememberPostProcessor.run()` 8단계 `_extractSymbolicClaims`: fire-and-forget. TENANT_ISOLATION_VIOLATION catch 후 `recordGateBlock` + swallow
+- `FragmentSearch.search` 라인 88 shadow hook (`observeLatency`)
+- `scripts/backfill-claims.js`: 키셋 페이지네이션 + 8 CLI 옵션 (`--batch-size`, `--rate-limit-ms`, `--tenant-key`, `--limit`, `--min-confidence`, `--dry-run`, `--verbose` 등)
+
+**Phase 2: Explainability (첫 사용자 가치)**
+- `ExplanationBuilder.annotate(fragments, searchContext)` — 불변 복사 + 싱글톤/DI 양립
+- `rules/v1/explain.js`: 6 reason codes (`direct_keyword_match`, `semantic_similarity`, `graph_neighbor_1hop`, `temporal_proximity`, `case_cohort_member`, `recent_activity_ema`), 각 fragment 최대 3개
+- `FragmentSearch.search` hook chain: shadow → explain → CBR 순서
+
+**Phase 3: Advisory Link Integrity + Polarity Conflict**
+- `LinkIntegrityChecker.checkCycle`: `sessionLinker.wouldCreateCycle` 재사용 (Phase 0.5에서 4-arg 전파 완료). DIRECTIONAL_RELATIONS {caused_by, resolved_by, superseded_by, preceded_by} 외엔 early return
+- Caller-side advisory guards 4곳: ConflictResolver.autoLinkOnRemember / .supersede, RememberPostProcessor linked_to Promise.all / _proactiveRecall
+- `ClaimConflictDetector`: `ClaimStore.findPolarityConflicts` + severity heuristic (1→low, 2-3→medium, 4+→high) + `memento_symbolic_warning_total` 기록
+- `ConflictResolver.checkAssertionConsistency`: 기존 Jaccard 파이프라인 보존 + symbolic polarity 병기. supersedeCandidates 병합 + `validationWarnings` 반환 필드 신설
+
+**Phase 4: Policy Rules + Soft Gating**
+- `PolicyRules` 5 predicate (순수 동기, AutoReflect 5원칙과 영역 분리):
+  - `decisionHasRationale` (linked_to ≥ 2 OR 근거 키워드)
+  - `errorHasResolutionPath` (cause/fix 키워드 OR resolution_status)
+  - `procedureHasStepMarkers` (번호/단계 마커)
+  - `caseIdHasResolutionStatus` (case_id 있으면 resolution_status 필수)
+  - `assertionNotContradictory`
+- `MemoryManager.remember` store.insert 직전 훅: violations → `fragment.validation_warnings` 누적, block 금지 (soft gate)
+- `migration-033`: `api_keys.symbolic_hard_gate` — 키 단위 hard gate 전환 예약
+
+**Phase 5: CBR Constraint Filtering**
+- `CbrEligibility` 4 제약 (`tenant_match`, `has_case_id`, `not_quarantine`, `resolved_state`). Prolog 미도입(옵션 A JS-only)
+- FragmentSearch `case_mode` 경로 (`sq.caseId` 주입 시) 필터 적용
+- SearchParamAdaptor 학습 신호 보호: `rawResultCount`는 pre-filter로 `recordOutcome`, post-filter 차단은 `memento_symbolic_gate_blocked_total{phase=cbr}`로 별도 기록
+
+**Phase 6: ProactiveRecall Gating**
+- `RememberPostProcessor._proactiveRecall` overlap ≥ 0.5 분기 내 `_proactiveGateCheck` 삽입
+- `rules/v1/proactive-gate.js`: 비용 순 검사 (invalid_target → quarantine → cohort_mismatch → polarity_conflict). detector throw는 fail-open
+
+**Observability**
+- Prometheus 메트릭 4종: `memento_symbolic_claim_total`, `memento_symbolic_warning_total`, `memento_symbolic_gate_blocked_total`, `memento_symbolic_latency_seconds`
+
+### Security — Tenant Isolation Hardening
+
+- **Phase 0.5: SessionLinker.wouldCreateCycle keyId 4-arg 전파**: v2.7.0 9260ff2 tenant isolation 14건 수정이 놓친 사각지대 봉인 — API 키 사용자 컨텍스트의 cycle 탐색이 cross-tenant fragment를 경유하던 결함 제거. `store.isReachable` 4-arg 시그니처 확장. `SessionLinker.autoLinkSessionFragments`, `ReflectProcessor:222`, `MemoryManager._autoLinkSessionFragments/_wouldCreateCycle` wrapper 전수 수정
+- **회귀 가드**: `tests/unit/tenant-isolation.test.js` 신규 6건 (cross-tenant cycle 차단 grep 기반)
+
+### Fixed
+
+- `migration-032` `fragment_id` 타입 정정: UUID → TEXT (fragments.id 타입 일치, 4e1d003)
+- dead indirection 정리: migration-033 rollback 파일 네이밍 회피 (9678392)
+
+### Migration Guide (v2.7.0 → v2.8.0)
+
+**기본 시나리오 (회귀 0건 보장)**
+- `npm run migrate` 실행: migration-032, migration-033 적용 — 스키마 확장만 수행, 기본 플래그 false 상태 유지 → 기존 동작과 완전 동일
+
+**Symbolic 계층 단계적 활성화 순서 (권장)**
+1. `MEMENTO_SYMBOLIC_ENABLED=true` — 마스터 킬 스위치 해제
+2. `MEMENTO_SYMBOLIC_SHADOW=true` + `MEMENTO_SYMBOLIC_CLAIM_EXTRACTION=true` — Phase 1 shadow mode로 claim 축적 확인
+3. `scripts/backfill-claims.js` 실행으로 기존 파편 claim 백필 (옵션: `--dry-run` 선행)
+4. `MEMENTO_SYMBOLIC_EXPLAIN=true` — Phase 2 recall 응답 explanation 필드 공개
+5. `MEMENTO_SYMBOLIC_LINK_CHECK=true` + `MEMENTO_SYMBOLIC_POLARITY_CONFLICT=true` — Phase 3 advisory warning
+6. `MEMENTO_SYMBOLIC_POLICY_RULES=true` — Phase 4 soft gating (validation_warnings 누적만, block 없음)
+7. `MEMENTO_SYMBOLIC_CBR_FILTER=true` + `MEMENTO_SYMBOLIC_PROACTIVE_GATE=true` — Phase 5/6 제약 필터
+8. 필요 시 개별 API 키에 `api_keys.symbolic_hard_gate=true` 설정으로 hard gate 전환
+
+**신규 응답 필드**
+- `remember` 응답: `fragment.validation_warnings: string[]` (플래그 off 시 빈 배열 또는 undefined)
+- `recall` 응답: `fragment.explanation: { reasonCodes: string[], contributions: {...} }` (플래그 off 시 포함되지 않음)
+
 ## [2.7.0] - 2026-04-10
 
 ### Security (Breaking Changes)

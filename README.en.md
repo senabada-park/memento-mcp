@@ -126,6 +126,18 @@ For Claude.ai Web and ChatGPT, Memento uses OAuth. Enter your API key (`mmcp_xxx
 
 See [integration guides](docs/getting-started/) for platform-specific setup.
 
+## 7 Fragment Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `fact` | Factual information | Config values, paths, versions, objective data |
+| `decision` | Decision record | Architecture choices, tech stack decisions with rationale |
+| `error` | Error & resolution | Errors encountered, root causes, and fixes |
+| `preference` | User preference | Coding style, workflow preferences, conventions |
+| `procedure` | Procedure | Deployment, build, test steps — repeatable sequences |
+| `relation` | Relationship | Entity connections, dependencies, ownership |
+| `episode` | Episode narrative | Contextual narrative preserving "why" behind events (1000 chars; others capped at 300) |
+
 ## Core Features
 
 | Feature | Description |

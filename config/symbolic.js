@@ -6,8 +6,6 @@
  *
  * Phase 0 원칙: 모든 플래그 기본값 false/noop. Phase 별 순차 enable.
  * 기본값 상태에서 v2.7.0 동작과 완전히 동일해야 한다 (회귀 0건).
- *
- * 참조: /home/nirna/.claude/projects/-home-nirna-job-mcp-memento-mcp/memory/project_v27_neurosymbolic_plan.md
  */
 
 const parseBool = (v, def = false) => {

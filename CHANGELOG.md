@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.8.5] - 2026-04-17
+
+### Fixed
+
+- **claude.ai OAuth 연결 실패 해결 (MCP 2025-06-18 spec 준수)**: claude.ai는 사용자가 connector UI에 입력한 `client_id`로 `/authorize`를 호출하고 `POST /token` body의 `client_secret`에 API 키를 전송한다. 다음 3개 수정으로 정상 tenant-격리된 OAuth 세션이 발급된다.
+
+### Added
+
+- **`/token#handleToken`의 `client_secret` → API 키 바인딩**: body의 `client_secret`을 `validateApiKeyFromDB`로 검증해 `tokenData.is_api_key=true` + `bound_key_id=keyId`를 주입. authorization_code와 refresh_token grant 모두 지원. 기존 auth.js의 bound_key_id 경로(v2.8.4)와 맞물려 keyId 격리 세션을 발급. (`lib/oauth.js`)
+- **RFC 8707 `resource` 파라미터 저장**: `/authorize`와 `/token`에서 받은 `resource`를 codeData/tokenData에 보존하여 토큰 audience 추적. (`lib/oauth.js`, `lib/handlers/oauth-handler.js`)
+
+### Changed
+
+- **`token_endpoint_auth_methods_supported` 확장**: `["none"]` → `["none", "client_secret_post", "client_secret_basic"]`. claude.ai의 `client_secret_post` 호출과 AS metadata 일치. (`lib/oauth.js#getAuthServerMetadata`)
+- **`bearer_methods_supported`에서 `query` 제거**: `["header", "query"]` → `["header"]`. MCP 스펙(2025-06-18 §249) "MUST NOT in URI query string" 준수. (`lib/oauth.js#getResourceMetadata`)
+- **Protected Resource Metadata의 `resource` URI에 `/mcp` 경로 포함**: `${baseUrl}` → `${baseUrl}/mcp`. claude.ai가 `resource` 필드를 MCP 엔드포인트로 사용하여 이전에는 `/`(root)로 POST하다 404를 받던 문제 해결. (`lib/oauth.js#getResourceMetadata`)
+
 ## [2.8.4] - 2026-04-17
 
 ### Changed

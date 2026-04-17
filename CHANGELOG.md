@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.8.6] - 2026-04-17
+
+### Changed
+
+- **신뢰 redirect_uri에 한해 `/authorize` 자동 등록 허용**: `OAUTH_TRUSTED_ORIGINS` 기반 `isAllowedRedirectUri`가 true인 경우, `ALLOW_AUTO_DCR_REGISTER`와 무관하게 미등록 client_id도 `/authorize` 진입 시 자동 등록된다. 실질적 보안 경계는 v2.8.5의 `/token` `client_secret` 검증이므로 auto-register 자체는 안전하다. 바인딩되지 않은 토큰(API 키 미포함 시)은 `REJECT_NONAPIKEY_OAUTH=true` 정책에 의해 auth.js에서 거부된다. (`lib/handlers/oauth-handler.js`)
+- **기본 신뢰 도메인 확인**: `claude.ai`, `chatgpt.com`, `platform.openai.com`, `copilot.microsoft.com`, `gemini.google.com` 5개 사전 내장. `OAUTH_TRUSTED_ORIGINS` env로 추가 가능. (`lib/config.js`)
+
+### Impact
+
+- claude.ai 외 ChatGPT/Copilot/Gemini 등 OAuth DCR-less 클라이언트도 사전 수동 등록 없이 즉시 연결 가능. 사용자가 client_id에 임의 문자열 + client_secret에 API 키를 입력하기만 하면 됨.
+- 비신뢰 redirect_uri는 기존과 동일하게 `ALLOW_AUTO_DCR_REGISTER=false` 기본값에서 차단 (보안 유지).
+
 ## [2.8.5] - 2026-04-17
 
 ### Fixed

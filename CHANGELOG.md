@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.8.3] - 2026-04-17
+
+### Fixed
+
+- **DCR /register Authorization 헤더 기반 client_id 바인딩**: claude.ai 등 OAuth DCR 클라이언트가 `POST /register` 요청 시 `Authorization: Bearer <API 키>` 헤더로 보낸 API 키가 유효하면, 해당 API 키 문자열을 `client_id`로 사용하여 등록한다. 이후 `/authorize` 경로에서 `validateApiKeyFromDB`로 자연스럽게 `is_api_key=true` 경로를 타게 되어, Phase 2b의 non-API-key OAuth 거부 정책과 충돌 없이 정상 tenant 격리된 세션을 발급받는다. (`lib/handlers/oauth-handler.js`)
+
+### Notes
+
+- 별도 DB 스키마 변경 없음. 기존 `mmcp_*` 접두 client_id 플로우를 재활용한다.
+- Authorization 헤더 없거나 유효하지 않은 토큰이면 기존 랜덤 client_id로 등록하되, 그 클라이언트가 발급받은 토큰은 auth.js의 `REJECT_NONAPIKEY_OAUTH=true` 정책에 의해 여전히 거부된다.
+
 ## [2.8.2] - 2026-04-17
 
 ### Security

@@ -18,6 +18,7 @@
 import { describe, it, before } from "node:test";
 import assert                    from "node:assert/strict";
 import { performance }           from "node:perf_hooks";
+import "./_cleanup.js";
 
 const ENABLED       = process.env.E2E_LLM_TIMEOUT === "1";
 const OLLAMA_URL    = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";

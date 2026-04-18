@@ -22,6 +22,7 @@ import assert                    from "node:assert/strict";
 import { spawn }                 from "child_process";
 import { fileURLToPath }         from "url";
 import path                      from "path";
+import "./_cleanup.js";
 
 /** E2E_LLM_CHAIN=1 이 아니면 전체 suite를 skip한다 */
 const ENABLED = process.env.E2E_LLM_CHAIN === "1";

@@ -19,8 +19,9 @@
  */
 
 import "dotenv/config";
-import { describe, it, before, after } from "node:test";
-import assert                           from "node:assert/strict";
+import { describe, it, before } from "node:test";
+import assert                   from "node:assert/strict";
+import "./_cleanup.js";
 
 const ENABLED = process.env.E2E_MORPHEME === "1";
 
@@ -35,24 +36,7 @@ describe("MorphemeIndex — 실제 LLM 체인 tokenize", { skip: !ENABLED, timeo
     // MorphemeIndex는 별도 초기화 메서드가 없으므로 인스턴스 생성만으로 준비 완료
   });
 
-  after(async () => {
-    // Redis async close — 포트 재사용 충돌 방지
-    try {
-      const { redisClient } = await import("../../lib/redis.js");
-      if (redisClient && typeof redisClient.quit === "function") {
-        await redisClient.quit();
-      }
-    } catch (_) { /* Redis 미설정 시 무시 */ }
-
-    // DB pool 해제
-    try {
-      const { getPrimaryPool } = await import("../../lib/tools/db.js");
-      const pool = getPrimaryPool();
-      if (pool && typeof pool.end === "function") {
-        await pool.end();
-      }
-    } catch (_) { /* DB 미연결 시 무시 */ }
-  });
+  // cleanup은 ./_cleanup.js의 공통 after 훅이 담당한다.
 
   // ---------------------------------------------------------------------------
   // 테스트 1: 한국어 문장 → 의미 단위 형태소 배열

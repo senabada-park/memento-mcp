@@ -13,6 +13,7 @@
 
 import { describe, it, before } from "node:test";
 import assert                    from "node:assert/strict";
+import "./_cleanup.js";
 
 const ENABLED     = process.env.E2E_LLM_CLI === "1";
 const TIMEOUT_MS  = 120_000;

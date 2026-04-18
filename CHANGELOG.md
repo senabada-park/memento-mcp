@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.9.0] - 2026-04-18
+
+### Added
+
+- **Mode preset 시스템**: recall-only / write-only / onboarding / audit 4개 JSON preset. `X-Memento-Mode` 헤더, `initialize.params.mode`, `api_keys.default_mode` DB 컬럼 3경로로 활성화. tools/list 응답이 mode별로 필터링된다. (`lib/memory/ModeRegistry.js`, `lib/memory/modes/*.json`, migration-034-api-key-mode.sql)
+- **RecallSuggestionEngine 비침습적 힌트 필드**: recall 응답에 `_suggestion: {code, message, recommendedTool, recommendedArgs}` 메타 필드 첨부. 4개 감지 규칙(repeat_query / empty_result_no_context / large_limit_no_budget / no_type_filter_noisy). 클라이언트가 무시해도 기존 동작 불변. (`lib/memory/RecallSuggestionEngine.js`)
+- **Affective tagging**: fragments.affect 컬럼(neutral / frustration / confidence / surprise / doubt / satisfaction 6 enum). remember / recall 스키마에 affect 파라미터 노출. CHECK 제약 + partial index. (migration-035-affect.sql, FragmentWriter / Reader)
+- **Tool 메타 레지스트리**: 16개 도구에 `meta: {capabilities[], riskLevel, requiresMaster, beta, idempotent}` 정적 필드 추가. 도구별 능력 디스커버리를 위한 Node.js 관용 메타데이터 레지스트리. (`lib/tool-registry.js`)
+- **Codex CLI provider**: `LLM_PRIMARY` / `LLM_FALLBACKS`에 `codex-cli` 지정 시 `codex exec --skip-git-repo-check --full-auto -o FILE` 경로로 JSON 출력을 파싱한다. (`lib/codex.js`, `lib/llm/providers/CodexCliProvider.js`)
+- **GitHub Copilot CLI provider**: `copilot-cli` 지정 시 `copilot -p "prompt" --allow-all-tools --output-format text` 호출 + `extractJsonBlock`으로 통계 꼬리를 제거한다. (`lib/copilot.js`, `lib/llm/providers/CopilotCliProvider.js`)
+- **로컬 transformers.js 임베딩 provider**: `EMBEDDING_PROVIDER=transformers`로 `@huggingface/transformers` 파이프라인 기반 임베딩. 기본 `Xenova/multilingual-e5-small` (384d), 옵션 `Xenova/bge-m3` (1024d). OpenAI API와 상호 배타 (데이터 혼합 방지). (`lib/embeddings/LocalTransformersEmbedder.js`, docs/embedding-local.md)
+- **Startup embedding consistency check**: fragments + morpheme_dict 두 테이블 차원이 config와 일치하는지 server.js 기동 시 검증, 불일치 시 기동 거부. (`scripts/check-embedding-consistency.js`)
+- **토큰 기반 세션 재사용**: claude.ai 커넥터가 Mcp-Session-Id 유실 후 매 initialize마다 새 세션을 생성하던 문제 해결. sha256 해시 + keyId 네임스페이스로 Redis 역인덱스를 구성하여 동일 액세스 토큰에 기존 세션을 재사용한다. (`lib/handlers/mcp-handler.js` deriveTokenKey, `lib/redis.js` bindTokenToSession / getSessionIdByToken)
+- **E2E 통합 테스트 4종**: llm-cli-smoke (CLI 바이너리 스모크), llm-chain-real (체인 실측 subprocess 기반), llm-timeout (latency / timeout 강제), morpheme-llm-real (MorphemeIndex end-to-end), local-embedding (transformers 모델 로드). 환경변수 가드(`E2E_LLM_CLI` 등)로 기본 SKIP. `npm run test:integration:llm` 스크립트 + `tests/integration/README.md` 실행 가이드. (tests/integration/)
+- **`tests/integration/_cleanup.js` 공통 cleanup 모듈**: Redis / DB pool 핸들 명시 해제로 Node 이벤트 루프 자연 종료 보장.
+
+### Changed
+
+- **MorphemeIndex LLM timeout 상향**: 15_000ms → 60_000ms. Gemini CLI / Ollama Cloud 실제 응답(20-40s)에 맞게 조정하여 반복적인 "all LLM providers failed" 패턴을 해소한다. (`config/memory.js`)
+- **migration-007 확장**: fragments + morpheme_dict 두 테이블을 루프로 처리하도록 flexible-embedding-dims 마이그레이션을 확장.
+- **`.env` 샘플 갱신**: `LLM_FALLBACKS`에 `codex-cli` / `copilot-cli` 예시 포함.
+
+### Fixed
+
+- **FragmentReader / LinkStore 다중 경로의 keyId ANY() 래핑 누락**: scalar keyId를 `ANY($N)`에 그대로 push하여 "비정상적인 배열 문자" PG 오류를 발생시키던 버그. v2.8.7에서 `getByIds`만 수정한 패턴을 `searchByKeywords`, `searchByTopic`, `searchBySemantic`, `searchByTimeRange`, `searchAsOf`, `getLinkedFragments`(2곳), `getRCAChain`에 일괄 적용. `Array.isArray` 래핑. (`lib/memory/FragmentReader.js`, `lib/memory/LinkStore.js`)
+- **TemporalLinker `::integer[]` 오캐스팅**: `fragments.key_id`가 TEXT 컬럼인데 `::integer[]` 캐스팅을 사용하여 "연산자 없음: text = integer" 에러가 발생하던 문제. `::text[]`로 교체. (`lib/memory/TemporalLinker.js`)
+- **빈 POST body null crash**: `readJsonBody`가 빈 body를 받아 `JSON.parse(null)`을 반환할 때 발생하던 unhandledRejection. `handleMcpPost` 진입부에서 null을 400 Invalid Request로 거부. `injectSessionContext`에도 null 가드를 이중 방어로 추가.
+- **`npm run test:integration:llm` 서브프로세스 경합**: `--test-concurrency=1` 플래그로 순차 실행을 강제하여 병렬 CLI 서브프로세스 간 경합을 제거.
+
+### Breaking Changes
+
+없음. 모든 신규 기능은 opt-in이다. Mode preset / affect / 로컬 임베딩은 기본값을 유지하면 기존 동작이 완전히 보존된다. migration-034(api_keys.default_mode), migration-035(fragments.affect)는 ADD COLUMN이므로 기존 데이터에 영향 없다.
+
 ## [2.8.7] - 2026-04-17
 
 ### Fixed

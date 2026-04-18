@@ -62,6 +62,8 @@ npm run migrate
 node server.js
 ```
 
+OpenAI API 없이 로컬 임베딩을 사용하려면 `.env`에 `EMBEDDING_PROVIDER=transformers`를 추가한다. 기동 시 `Xenova/multilingual-e5-small` 모델을 자동으로 다운로드한다. 단, OpenAI 임베딩으로 이미 저장된 데이터와 혼용하면 차원이 불일치하므로 새로 마이그레이션된 DB에서만 사용할 것.
+
 서버가 뜬 뒤에는 [First Memory Flow](docs/getting-started/first-memory-flow.md)로 동작을 검증한다.
 
 다른 플랫폼 설정은 위 [호환 플랫폼](#호환-플랫폼) 테이블 참조.
@@ -156,6 +158,15 @@ Claude.ai Web / ChatGPT 연동은 OAuth를 사용한다. 발급한 API 키(`mmcp
 | OAuth 연동 | RFC 7591 Dynamic Client Registration, Claude.ai / ChatGPT Web 통합 지원 |
 | **Workspace 격리** | 같은 키 내에서도 프로젝트·직종·클라이언트 단위로 기억을 분리. `api_keys.default_workspace`로 자동 태깅, 검색 시 자동 필터. |
 
+### v2.9.0 신규 기능
+
+- **Mode preset**: recall-only / write-only / onboarding / audit 4개 JSON preset. `X-Memento-Mode` 헤더 또는 `api_keys.default_mode` DB 컬럼으로 도구 노출 범위를 제한한다. 읽기 전용 에이전트, 감사 전용 세션 등 역할 기반 접근을 코드 변경 없이 구성할 수 있다.
+- **RecallSuggestionEngine**: recall 응답에 `_suggestion` 메타 필드를 비침습적으로 첨부. 반복 질의, 빈 결과, 과도한 limit 등 4개 패턴을 자동 감지하여 개선 힌트를 제공한다. 클라이언트가 무시해도 기존 동작 불변.
+- **Affective tagging**: `fragments.affect` 컬럼(neutral / frustration / confidence / surprise / doubt / satisfaction). remember / recall 시 감정 레이블로 필터링 가능. 반복 에러 패턴이나 확신도 높은 결정을 구분하는 데 활용된다.
+- **CLI LLM provider 체인**: Gemini CLI, Codex CLI, GitHub Copilot CLI를 `LLM_PRIMARY` / `LLM_FALLBACKS`에 지정 가능. 외부 API 비용 없이 로컬 CLI 바이너리로 형태소 분석·자동 reflect·모순 에스컬레이션을 처리한다.
+- **로컬 transformers.js 임베딩**: `EMBEDDING_PROVIDER=transformers`로 OpenAI API 없이 `@huggingface/transformers` 파이프라인 기반 임베딩. 기본 `Xenova/multilingual-e5-small` (384d). API 키 없는 로컬 전용 배포에 적합하다.
+- **토큰 기반 세션 재사용**: claude.ai 커넥터가 Mcp-Session-Id를 유실한 뒤 매 initialize마다 새 세션을 만들던 문제 해결. 동일 액세스 토큰에 기존 세션 ID를 재바인딩하여 기억 파편이 유실되지 않는다.
+
 ### 보안 하드닝 (v2.7.0)
 
 - **RBAC default-deny**: `TOOL_PERMISSIONS` 맵에 없는 도구명은 권한과 무관하게 즉시 거부된다.
@@ -227,7 +238,7 @@ Memento는 사실 기억(fact cache)에 최적화되어 있다. 전후관계가 
 | [Benchmark](docs/benchmark.md) | LongMemEval-S 벤치마크 상세 분석 |
 | [SKILL.md](SKILL.md) | MCP 도구 전체 레퍼런스 |
 | [INSTALL.md](docs/INSTALL.md) | 마이그레이션, 훅 설정, 상세 설치 |
-| [CHANGELOG](CHANGELOG.md) | 버전별 변경사항, v2.7.0 Migration Guide 포함 |
+| [CHANGELOG](CHANGELOG.md) | 버전별 변경사항, v2.9.0 신규 기능 상세, v2.7.0 Migration Guide 포함 |
 
 ## 운영
 
@@ -248,12 +259,12 @@ Memento는 사실 기억(fact cache)에 최적화되어 있다. 전후관계가 
 - Node.js 20+
 - PostgreSQL 14+ (pgvector 확장)
 - Redis 6+ (선택)
-- OpenAI Embedding API (선택)
-- Gemini CLI (품질 평가, 모순 에스컬레이션, 자동 reflect 요약 생성용, 선택)
-- @huggingface/transformers + ONNX Runtime (NLI 모순 분류, CPU 전용, 자동 설치)
+- OpenAI Embedding API (선택) 또는 `EMBEDDING_PROVIDER=transformers` (로컬 저비용 모드)
+- Gemini CLI / Codex CLI / GitHub Copilot CLI (품질 평가, 형태소 분석, 자동 reflect; 선택, LLM_PRIMARY / LLM_FALLBACKS로 체인 구성)
+- @huggingface/transformers + ONNX Runtime (NLI 모순 분류 + 로컬 임베딩, CPU 전용)
 - MCP Protocol 2025-11-25
 
-PostgreSQL만 있으면 핵심 기능이 동작한다. Redis를 추가하면 L1 캐스케이드 검색과 SessionActivityTracker가 활성화되고, OpenAI API를 추가하면 L3 시맨틱 검색과 자동 링크가 활성화된다.
+PostgreSQL만 있으면 핵심 기능이 동작한다. Redis를 추가하면 L1 캐스케이드 검색과 SessionActivityTracker가 활성화되고, OpenAI API 또는 `EMBEDDING_PROVIDER=transformers`를 추가하면 L3 시맨틱 검색과 자동 링크가 활성화된다.
 
 ## 만들게 된 계기
 

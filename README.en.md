@@ -62,6 +62,8 @@ npm run migrate
 node server.js
 ```
 
+To use local embeddings without an OpenAI API key, add `EMBEDDING_PROVIDER=transformers` to `.env`. The `Xenova/multilingual-e5-small` model is downloaded automatically on first start. Do not mix local and OpenAI embeddings within the same database — dimension mismatch will cause a startup abort.
+
 Once the server is running, verify it with the [First Memory Flow](docs/getting-started/first-memory-flow.md).
 
 For other platforms, see the [Compatible Platforms](#compatible-platforms) table above.
@@ -156,6 +158,15 @@ See [integration guides](docs/getting-started/) for platform-specific setup.
 | OAuth Integration | RFC 7591 Dynamic Client Registration, Claude.ai Web and ChatGPT integration support |
 | **Workspace isolation** | Partition memories by project, role, or client within the same API key. Auto-tag via `api_keys.default_workspace`, auto-filter on recall. |
 
+### What's New in v2.9.0
+
+- **Mode presets**: Four JSON presets — recall-only, write-only, onboarding, audit. Activate via `X-Memento-Mode` header or `api_keys.default_mode` DB column to constrain which tools are exposed per session. Enables role-based access control without any code changes.
+- **RecallSuggestionEngine**: Non-invasive `_suggestion` meta field appended to recall responses. Detects four patterns — repeat queries, empty results with no context, oversized limit with no budget, and noisy untyped queries — and surfaces improvement hints. Clients that ignore the field see no behavior change.
+- **Affective tagging**: `fragments.affect` column with six enums: neutral, frustration, confidence, surprise, doubt, satisfaction. Expose the `affect` parameter in remember / recall to filter by emotional label. Useful for distinguishing recurring error patterns from high-confidence decisions.
+- **CLI LLM provider chain**: Gemini CLI, Codex CLI, and GitHub Copilot CLI can now be specified in `LLM_PRIMARY` / `LLM_FALLBACKS`. Morpheme analysis, auto-reflect, and contradiction escalation run through local CLI binaries with no external API cost.
+- **Local transformers.js embedding**: Set `EMBEDDING_PROVIDER=transformers` to use `@huggingface/transformers` pipeline-based embeddings without an OpenAI API key. Defaults to `Xenova/multilingual-e5-small` (384d). Suitable for fully local deployments.
+- **Token-based session reuse**: Resolves the issue where the claude.ai connector created a new session on every initialize after losing Mcp-Session-Id. The same access token is now bound to an existing session ID via a sha256 hash + keyId-namespaced Redis reverse index, preventing fragment loss.
+
 ### Security Hardening (v2.7.0)
 
 - **RBAC default-deny**: Any tool name not present in the `TOOL_PERMISSIONS` map is immediately rejected regardless of permissions.
@@ -227,7 +238,7 @@ Memento is optimized for fact caching. When narrative context matters:
 | [Benchmark](docs/benchmark.en.md) | Full LongMemEval-S benchmark analysis |
 | [SKILL.md](SKILL.md) | Full MCP tool reference |
 | [INSTALL.md](docs/INSTALL.en.md) | Migrations, hook setup, detailed installation |
-| [CHANGELOG](CHANGELOG.md) | Version history, v2.7.0 Migration Guide included |
+| [CHANGELOG](CHANGELOG.md) | Version history, v2.9.0 highlights, v2.7.0 Migration Guide included |
 
 ## Operations
 
@@ -248,12 +259,12 @@ Memento is optimized for fact caching. When narrative context matters:
 - Node.js 20+
 - PostgreSQL 14+ (pgvector extension)
 - Redis 6+ (optional)
-- OpenAI Embedding API (optional)
-- Gemini CLI (quality evaluation, contradiction escalation, auto-reflect summaries; optional)
-- @huggingface/transformers + ONNX Runtime (NLI contradiction classification, CPU-only, auto-installed)
+- OpenAI Embedding API (optional) or `EMBEDDING_PROVIDER=transformers` (local zero-cost mode)
+- Gemini CLI / Codex CLI / GitHub Copilot CLI (quality evaluation, morpheme analysis, auto-reflect; optional, chain-configurable via LLM_PRIMARY / LLM_FALLBACKS)
+- @huggingface/transformers + ONNX Runtime (NLI contradiction classification + local embeddings, CPU-only)
 - MCP Protocol 2025-11-25
 
-The core features work with PostgreSQL alone. Adding Redis enables L1 cascade search and SessionActivityTracker. Adding the OpenAI API enables L3 semantic search and automatic linking.
+The core features work with PostgreSQL alone. Adding Redis enables L1 cascade search and SessionActivityTracker. Adding the OpenAI API or setting `EMBEDDING_PROVIDER=transformers` enables L3 semantic search and automatic linking.
 
 ## Why I Built This
 

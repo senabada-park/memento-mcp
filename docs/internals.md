@@ -536,3 +536,141 @@ initialize 이후 모든 요청에서 `MCP-Protocol-Version` 헤더를 검사한
 세션 데이터 `negotiatedVersion` 필드는 `lib/sessions.js#createStreamableSessionWithId`에서 `null`로 초기화된다.
 
 메트릭: `mcp_protocol_version_rejected_total` (label: `version`)
+
+---
+
+## Mode 시스템 내부 동작 (v2.9.0)
+
+### ModeRegistry 초기화
+
+서버 시작 시 `initModeRegistry()`가 `lib/memory/modes/*.json` 파일을 일괄 로드하여 인메모리 Map에 적재한다. 4개 프리셋이 기본 제공된다.
+
+| 프리셋 | 차단 도구 | 용도 |
+|--------|---------|------|
+| `recall-only` | remember, batch_remember, amend, forget, link, reflect, memory_consolidate | 읽기 전용 클라이언트 |
+| `write-only` | recall, context, graph_explore, fragment_history | 쓰기 전용 파이프라인 |
+| `onboarding` | memory_consolidate, forget, amend | 신규 사용자 보호 |
+| `audit` | remember, batch_remember, amend, forget, link, reflect (requiresMaster=true) | 마스터 키 감사 전용 |
+
+각 JSON 파일의 스키마: `{ name, description, excluded_tools[], fixed_tools[], skill_guide_override?, requiresMaster? }`.
+
+### 세션 Mode 결정 우선순위
+
+`_resolveMode(req, msg, dbDefaultMode, keyId)` 함수가 아래 순서로 mode를 결정한다:
+
+1. `X-Memento-Mode` 요청 헤더 (최우선) — 등록된 프리셋이면 적용, 아니면 null
+2. `initialize` 요청의 `params.mode` 필드
+3. `api_keys.default_mode` DB 컬럼 값 (migration-034)
+
+결정된 mode는 세션 객체에 저장되어 이후 모든 요청에 재사용된다.
+
+### tools/list 필터링
+
+`filterTools(tools, presetName, isMaster)` 함수가 `excluded_tools` Set에 포함된 도구를 제거한 목록을 반환한다. `requiresMaster=true` 프리셋은 마스터 키 세션(`keyId === null`)에만 적용되며, 일반 API 키 세션에서는 프리셋을 무시하고 전체 도구를 노출한다.
+
+`get_skill_guide` 도구 응답 조립 시 `getSkillGuideOverride(presetName, isMaster)`가 `skill_guide_override` 문자열을 반환하면 기본 가이드 대신 해당 문자열이 사용된다.
+
+---
+
+## RecallSuggestionEngine 내부 동작 (v2.9.0)
+
+`lib/memory/RecallSuggestionEngine.js`. `MemoryManager.recall()` 완료 직후 fail-open 방식으로 호출된다. 예외 발생 시 null을 반환하여 recall 응답 자체에는 영향을 주지 않는다.
+
+응답의 `_suggestion` 필드로 클라이언트에 비침습적 힌트를 주입한다. 4개 규칙을 우선순위 순으로 평가하며, 첫 매치에서 즉시 반환한다(중복 제안 없음).
+
+| 규칙 코드 | 감지 조건 | 권장 도구 |
+|----------|---------|---------|
+| `repeat_query` | 5분 내 동일 keywords 유형 쿼리 3회 이상 | reconstruct_history 또는 graph_explore |
+| `empty_result_no_context` | 결과 0건 + contextText 미제공 | recall (contextText 추가) |
+| `large_limit_no_budget` | limit >= 50 + tokenBudget 미지정 | recall (tokenBudget 지정) |
+| `no_type_filter_noisy` | type 미지정 + 파편 총 수 > 100 | recall (type 지정) |
+
+`repeat_query` 규칙은 `search_events` 테이블에서 최근 5분 이벤트를 조회한다(`SearchEventRecorder`가 기록). `no_type_filter_noisy` 규칙은 `fragments` 테이블의 `valid_to IS NULL` 행 카운트를 사용한다.
+
+---
+
+## Affective Tagging 내부 동작 (v2.9.0)
+
+`fragments.affect` 컬럼 (migration-035). 허용 enum: `neutral | frustration | confidence | surprise | doubt | satisfaction`. 기본값 `neutral`.
+
+- **저장 경로**: `FragmentWriter`에서 `sanitizeAffect(value)`로 허용 enum 외 값을 `neutral`로 강제 치환한 후 INSERT/UPDATE.
+- **검색 필터**: `FragmentReader`의 `search*` 메서드들이 `affect` 파라미터를 수신한다. 단일 string이면 `= $N` 조건, 배열이면 `= ANY($N::text[])` 조건을 적용한다.
+- **인덱스**: `idx_frag_affect` partial index (`affect IS NOT NULL AND affect != 'neutral'`)로 `neutral`(대다수)을 제외한 유의미한 정서 값만 색인. 쿼리 성능을 유지하면서 인덱스 크기를 최소화한다.
+
+---
+
+## Tool 메타 레지스트리 내부 동작 (v2.9.0)
+
+각 MCP 도구 정의에 `meta` 필드가 추가되었다. `tools/list` 응답 조립 시 자동으로 포함된다.
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `capabilities` | string[] | 도구가 제공하는 기능 레이블 |
+| `riskLevel` | `"low"` \| `"medium"` \| `"high"` | 클라이언트 UI 위험 표시용 |
+| `requiresMaster` | boolean | 마스터 키 전용 도구 여부 |
+| `beta` | boolean | 실험적 기능 여부 |
+| `idempotent` | boolean | 멱등성 여부 (재시도 안전) |
+
+OpenAPI 스키마 생성(`GET /openapi.json`)에서도 이 메타데이터가 반영된다. 클라이언트는 `riskLevel`을 읽어 확인 프롬프트를 표시하거나, `requiresMaster` 도구를 감사 로그에 기록하는 등의 용도로 활용할 수 있다.
+
+---
+
+## 토큰 기반 세션 재사용 내부 동작 (v2.9.0)
+
+동일한 Bearer 토큰으로 연속 요청 시 새 세션을 생성하지 않고 기존 활성 세션을 재사용한다.
+
+**캐시 키 파생 (`deriveTokenKey`):**
+
+```
+hash = sha256(bearer_token).hex[:16]
+tokenKey = "{keyId|'master'}:{hash}"
+Redis key = "token_session:{tokenKey}"
+```
+
+Bearer 토큰 원문은 저장하지 않는다. sha256 단축 해시만 키로 사용한다.
+
+**세션 재사용 흐름:**
+
+1. `initialize` 요청 수신 시 `deriveTokenKey`로 tokenKey 파생
+2. `getSessionIdByToken(tokenKey)` → Redis에서 기존 sessionId 조회
+3. 기존 세션이 유효하면 해당 sessionId로 응답 (새 세션 생성 없음)
+4. 기존 세션이 없거나 만료됐으면 새 세션 생성 후 `bindTokenToSession(tokenKey, sessionId, ttlSec)` 호출
+
+Redis key TTL은 세션 TTL과 동기화된다(기본 30일 슬라이딩). Redis 비활성화 환경에서는 토큰 세션 재사용이 비활성화되고 매 initialize마다 새 세션이 생성된다.
+
+---
+
+## 로컬 transformers 임베딩 파이프라인 내부 동작 (v2.9.0)
+
+`EMBEDDING_PROVIDER=transformers` 설정 시 `lib/embeddings/LocalTransformersEmbedder.js`가 임베딩 생성을 담당한다.
+
+**초기화 흐름:**
+
+```
+getLocalEmbedder(modelId, dimensions)
+  → 싱글톤 Map 조회 (_singletons)
+  → 없으면 new LocalTransformersEmbedder({ modelId, dimensions })
+  → pipeline("feature-extraction", modelId, { dtype: "q8" }) 지연 로드
+```
+
+`@huggingface/transformers`의 `pipeline()` 함수를 `dtype: "q8"` 옵션으로 호출한다. 모델은 INT8 양자화로 로드되어 메모리 사용량을 절반 수준으로 줄인다.
+
+**임베딩 생성:**
+
+```js
+const output = await this._pipeline(text, { pooling: "mean", normalize: true });
+```
+
+`pooling: "mean"`으로 토큰 벡터를 평균하고 `normalize: true`로 L2 정규화한다. 결과는 `normalizeL2()`로 재정규화하여 부동소수점 오차를 보정한다.
+
+**Reranker/NLIClassifier와 런타임 공유:** 세 모듈 모두 `@huggingface/transformers`를 사용하지만 각각 다른 파이프라인 태스크(`feature-extraction` / `text-ranking` / `zero-shot-classification`)로 로드한다. ONNX Runtime 인스턴스는 프로세스 내에서 공유되므로 추가 메모리 오버헤드는 minimal하다.
+
+**메모리 예산 참고:**
+
+| 컴포넌트 | 모델 | 크기(Q8) |
+|---------|------|---------|
+| LocalEmbedder (e5-small) | Xenova/multilingual-e5-small | ~150 MB |
+| LocalEmbedder (e5-base) | Xenova/multilingual-e5-base | ~300 MB |
+| Reranker (minilm) | Xenova/ms-marco-MiniLM-L-6-v2 | ~80 MB |
+| Reranker (bge-m3) | onnx-community/bge-reranker-v2-m3-ONNX | ~280 MB |
+| NLIClassifier | Xenova/mDeBERTa-v3-base-mnli-xnli | ~250 MB |

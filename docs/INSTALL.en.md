@@ -120,7 +120,33 @@ psql $DATABASE_URL -f lib/memory/migration-026-case-events.sql
 
 # v2.5.0: Reconsolidation, Episode Continuity, Spreading Activation
 psql $DATABASE_URL -f lib/memory/migration-027-v25-reconsolidation-episode-spreading.sql
+
+# v2.5.3: Composite indexes, used_rrf consolidation, superseded_by removal
+psql $DATABASE_URL -f lib/memory/migration-028-v253-improvements.sql
+
+# v2.5.6: SearchParamAdaptor learning table
+psql $DATABASE_URL -f lib/memory/migration-029-search-param-thresholds.sql
+
+# v2.6.0: search_param_thresholds.key_id INTEGER → TEXT
+psql $DATABASE_URL -f lib/memory/migration-030-search-param-thresholds-key-text.sql
+
+# v2.7.0: content_hash global UNIQUE → per-tenant partial unique index
+psql $DATABASE_URL -f lib/memory/migration-031-content-hash-per-key.sql
+
+# v2.8.0: fragment_claims table + tenant isolation partial unique
+psql $DATABASE_URL -f lib/memory/migration-032-fragment-claims.sql
+
+# v2.8.0: api_keys.symbolic_hard_gate column
+psql $DATABASE_URL -f lib/memory/migration-033-symbolic-hard-gate.sql
+
+# v2.9.0: api_keys.default_mode column (mode preset system)
+psql $DATABASE_URL -f lib/memory/migration-034-api-key-mode.sql
+
+# v2.9.0: fragments.affect column + partial index (affective tagging)
+psql $DATABASE_URL -f lib/memory/migration-035-affect.sql
 ```
+
+> **Re-running migration-007**: If you change `EMBEDDING_DIMENSIONS` or switch embedding providers, re-run `scripts/migration-007-flexible-embedding-dims.js` to update the vector column dimensions in both the `fragments` and `morpheme_dict` tables simultaneously.
 
 Since v1.8.0, automatic migration is supported. Instead of running each file manually:
 
@@ -159,7 +185,108 @@ cp .env.example .env
 # Edit .env: set DATABASE_URL, MEMENTO_ACCESS_KEY, and other required values
 ```
 
+Additional environment variables:
+
+```
+LLM_PRIMARY             - Primary LLM provider (default: gemini-cli). Options: gemini-cli, codex, copilot, anthropic, etc.
+LLM_FALLBACKS           - JSON array of fallback providers: [{"provider":"anthropic","apiKey":"...","model":"claude-opus-4-6"}]
+```
+
 For the full list of environment variables, see [Configuration — Environment Variables](configuration.md#environment-variables).
+
+---
+
+## Local Embedding Mode (No OpenAI API Key Required)
+
+You can generate embeddings using a local `@huggingface/transformers` model without an OpenAI API key.
+
+### .env Configuration
+
+```
+EMBEDDING_PROVIDER=transformers
+EMBEDDING_MODEL=Xenova/multilingual-e5-small
+EMBEDDING_DIMENSIONS=384
+# Do NOT set EMBEDDING_API_KEY — mixing local and API providers corrupts the vector space
+```
+
+Supported local models:
+
+| Model | Size | Dimensions | Notes |
+|-------|------|-----------|-------|
+| `Xenova/multilingual-e5-small` | ~120 MB | 384 | Recommended starting point |
+| `Xenova/multilingual-e5-base` | ~280 MB | 768 | Higher accuracy |
+
+Setting `EMBEDDING_PROVIDER=transformers` together with `EMBEDDING_API_KEY` will cause the server to exit immediately on startup to prevent vector space corruption.
+
+### First-Run Model Download
+
+On first startup, the model is automatically downloaded from HuggingFace Hub. For `Xenova/multilingual-e5-small` (~120 MB), this may take a few minutes depending on network speed. Subsequent starts load from the local cache.
+
+```
+[LocalEmbedder] loading model Xenova/multilingual-e5-small (dtype=q8)
+```
+
+### Cache Path (HF_HOME)
+
+Default cache location: `~/.cache/huggingface`
+
+For Docker deployments, mount the cache directory as a volume to avoid re-downloading on container restart:
+
+```yaml
+volumes:
+  - hf_cache:/root/.cache/huggingface
+environment:
+  - HF_HOME=/root/.cache/huggingface
+```
+
+For full details, see [docs/embedding-local.md](embedding-local.md).
+
+---
+
+## Optional Dependencies
+
+### gemini CLI (default LLM provider)
+
+```bash
+npm install -g @google/gemini-cli
+gemini auth login
+```
+
+### Codex CLI (LLM fallback)
+
+```bash
+npm install -g @openai/codex
+codex auth login
+```
+
+### Copilot CLI (LLM fallback)
+
+```bash
+npm install -g @githubnext/github-copilot-cli
+github-copilot-cli auth
+```
+
+To use a CLI provider, set `LLM_PRIMARY` or `LLM_FALLBACKS` to `"codex"` or `"copilot"`.
+
+---
+
+## Post-Startup Verification Checklist
+
+After the server starts, verify the following in order:
+
+```bash
+# 1. Health endpoint returns 200
+curl -s http://localhost:57332/health | jq .status
+
+# 2. Check server log for embedding consistency (printed at startup)
+# Success: "consistency check result: PASS"
+# Failure: review EMBEDDING_DIMENSIONS and re-run migration-007 if needed
+
+# 3. CLI diagnostics
+node bin/memento.js health
+```
+
+A `consistency check result: PASS` log line confirms that `EMBEDDING_DIMENSIONS` matches the actual vector dimensions stored in the database. If `FAIL` appears, re-run `scripts/migration-007-flexible-embedding-dims.js` and restart the server.
 
 ## Starting the Server
 

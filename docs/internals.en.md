@@ -448,3 +448,141 @@ Three hooks execute in order after line 88 in `lib/memory/FragmentSearch.js`:
 ### ConflictResolver.checkAssertionConsistency and validationWarnings Addition
 
 `checkAssertionConsistency` in `lib/memory/ConflictResolver.js` preserves the existing Jaccard pipeline (`JACCARD_THRESHOLD=0.3`, up to 10 fragments within a 7-day window) while adding Phase 3 symbolic polarity conflict results alongside it. Within the `SYMBOLIC_CONFIG.enabled && SYMBOLIC_CONFIG.polarityConflict` guard, `ClaimConflictDetector.detectPolarityConflicts` is called; exceptions are logged with logWarn and swallowed. `conflictWith` IDs found in polarity conflicts are merged into the existing `supersedeCandidates`. The return type is extended to a 3-tuple `{ assertionStatus, supersedeCandidates, validationWarnings }`, returning `validationWarnings: []` as an empty array when the flag is off.
+
+---
+
+## Mode System Internals (v2.9.0)
+
+### ModeRegistry Initialization
+
+On server startup, `initModeRegistry()` reads all `lib/memory/modes/*.json` files and populates an in-memory Map. Four presets are shipped by default.
+
+| Preset | Blocked Tools | Use Case |
+|--------|-------------|---------|
+| `recall-only` | remember, batch_remember, amend, forget, link, reflect, memory_consolidate | Read-only clients |
+| `write-only` | recall, context, graph_explore, fragment_history | Write-only pipelines |
+| `onboarding` | memory_consolidate, forget, amend | New user protection |
+| `audit` | remember, batch_remember, amend, forget, link, reflect (requiresMaster=true) | Master-key audit sessions |
+
+Each JSON file schema: `{ name, description, excluded_tools[], fixed_tools[], skill_guide_override?, requiresMaster? }`.
+
+### Session Mode Resolution Priority
+
+`_resolveMode(req, msg, dbDefaultMode, keyId)` determines the mode in this order:
+
+1. `X-Memento-Mode` request header (highest priority) — applied if the value is a registered preset name, otherwise null
+2. `params.mode` field in an `initialize` request
+3. `api_keys.default_mode` DB column (migration-034)
+
+The resolved mode is stored in the session object and reused for all subsequent requests within the same session.
+
+### tools/list Filtering
+
+`filterTools(tools, presetName, isMaster)` removes tools in the `excluded_tools` set and returns the filtered list. Presets with `requiresMaster=true` are only applied to master-key sessions (`keyId === null`); regular API key sessions ignore such presets and receive the full tool list.
+
+When assembling the `get_skill_guide` response, `getSkillGuideOverride(presetName, isMaster)` returns the `skill_guide_override` string from the preset. If present, this overrides the default skill guide text.
+
+---
+
+## RecallSuggestionEngine Internals (v2.9.0)
+
+`lib/memory/RecallSuggestionEngine.js`. Called after `MemoryManager.recall()` completes in a fail-open manner. On exception, returns null so the recall response itself is unaffected.
+
+The engine injects a `_suggestion` field into the recall response as a non-invasive hint. Four rules are evaluated in priority order; the first match returns immediately (no duplicate suggestions).
+
+| Rule Code | Detection Condition | Recommended Tool |
+|-----------|-------------------|-----------------|
+| `repeat_query` | Same keyword query type ≥3 times within 5 minutes | reconstruct_history or graph_explore |
+| `empty_result_no_context` | 0 results + no contextText | recall (add contextText) |
+| `large_limit_no_budget` | limit ≥ 50 + no tokenBudget | recall (add tokenBudget) |
+| `no_type_filter_noisy` | no type filter + total fragments > 100 | recall (add type filter) |
+
+The `repeat_query` rule queries the `search_events` table for events in the past 5 minutes (written by `SearchEventRecorder`). The `no_type_filter_noisy` rule counts `valid_to IS NULL` rows in the `fragments` table.
+
+---
+
+## Affective Tagging Internals (v2.9.0)
+
+`fragments.affect` column (migration-035). Allowed enum: `neutral | frustration | confidence | surprise | doubt | satisfaction`. Default: `neutral`.
+
+- **Write path**: `FragmentWriter` calls `sanitizeAffect(value)` to coerce any value outside the allowed enum to `neutral` before INSERT/UPDATE.
+- **Search filter**: `FragmentReader` search methods accept an `affect` parameter. A single string applies `= $N`; an array applies `= ANY($N::text[])`.
+- **Index**: `idx_frag_affect` partial index (`affect IS NOT NULL AND affect != 'neutral'`) indexes only non-neutral values (the minority), keeping index size minimal while preserving query performance for filtered searches.
+
+---
+
+## Tool Meta Registry Internals (v2.9.0)
+
+Each MCP tool definition now includes a `meta` field, automatically included in `tools/list` responses.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `capabilities` | string[] | Functional labels describing what the tool does |
+| `riskLevel` | `"low"` \| `"medium"` \| `"high"` | Risk indicator for client UI |
+| `requiresMaster` | boolean | Whether the tool requires a master key |
+| `beta` | boolean | Whether the tool is experimental |
+| `idempotent` | boolean | Whether the tool is safe to retry |
+
+The `GET /openapi.json` endpoint also reflects this metadata. Clients can use `riskLevel` to show confirmation prompts, or use `requiresMaster` to route calls to audit logs.
+
+---
+
+## Token-Based Session Reuse Internals (v2.9.0)
+
+When the same Bearer token is used for consecutive `initialize` requests, the server reuses the existing active session instead of creating a new one.
+
+**Cache key derivation (`deriveTokenKey`):**
+
+```
+hash = sha256(bearer_token).hex[:16]
+tokenKey = "{keyId|'master'}:{hash}"
+Redis key = "token_session:{tokenKey}"
+```
+
+The raw token is never stored; only the sha256 truncated hash is used as the key.
+
+**Session reuse flow:**
+
+1. On `initialize`, derive `tokenKey` from the request
+2. `getSessionIdByToken(tokenKey)` → look up existing sessionId in Redis
+3. If a valid session exists, return the same sessionId (no new session created)
+4. If no session or expired, create a new session and call `bindTokenToSession(tokenKey, sessionId, ttlSec)`
+
+Redis key TTL is synchronized with session TTL (default 30-day sliding). When Redis is disabled, token session reuse is inactive and every `initialize` creates a new session.
+
+---
+
+## Local transformers Embedding Pipeline Internals (v2.9.0)
+
+When `EMBEDDING_PROVIDER=transformers` is set, `lib/embeddings/LocalTransformersEmbedder.js` handles embedding generation.
+
+**Initialization flow:**
+
+```
+getLocalEmbedder(modelId, dimensions)
+  → check singleton Map (_singletons)
+  → if absent: new LocalTransformersEmbedder({ modelId, dimensions })
+  → pipeline("feature-extraction", modelId, { dtype: "q8" }) — lazy load
+```
+
+The `@huggingface/transformers` `pipeline()` function is called with `dtype: "q8"`, loading the model in INT8 quantized form to halve memory usage.
+
+**Embedding generation:**
+
+```js
+const output = await this._pipeline(text, { pooling: "mean", normalize: true });
+```
+
+`pooling: "mean"` averages token vectors; `normalize: true` applies L2 normalization. The result is passed through `normalizeL2()` again to correct floating-point drift.
+
+**Shared runtime with Reranker/NLIClassifier:** All three modules use `@huggingface/transformers` but load different pipeline tasks (`feature-extraction` / `text-ranking` / `zero-shot-classification`). The ONNX Runtime instance is shared within the process, so additional memory overhead is minimal.
+
+**Memory budget reference:**
+
+| Component | Model | Size (Q8) |
+|-----------|-------|----------|
+| LocalEmbedder (e5-small) | Xenova/multilingual-e5-small | ~150 MB |
+| LocalEmbedder (e5-base) | Xenova/multilingual-e5-base | ~300 MB |
+| Reranker (minilm) | Xenova/ms-marco-MiniLM-L-6-v2 | ~80 MB |
+| Reranker (bge-m3) | onnx-community/bge-reranker-v2-m3-ONNX | ~280 MB |
+| NLIClassifier | Xenova/mDeBERTa-v3-base-mnli-xnli | ~250 MB |

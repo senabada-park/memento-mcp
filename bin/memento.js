@@ -13,10 +13,12 @@ const COMMANDS = {
   remember:  () => import('../lib/cli/remember.js'),
   inspect:   () => import('../lib/cli/inspect.js'),
   update:    () => import('../lib/cli/update.js'),
+  export:    () => import('../lib/cli/export.js'),
+  import:    () => import('../lib/cli/import.js'),
 };
 
 /** 원격 모드를 지원하지 않는 로컬 전용 명령 목록 */
-const LOCAL_ONLY_COMMANDS = new Set(["serve", "migrate", "cleanup", "backfill", "health", "update"]);
+const LOCAL_ONLY_COMMANDS = new Set(["serve", "migrate", "cleanup", "backfill", "health", "update", "export", "import"]);
 
 function printUsage() {
   const lines = [
@@ -33,6 +35,8 @@ function printUsage() {
     '  remember <content> --topic  Store a fragment from terminal',
     '  inspect <fragment-id>       Show fragment detail + 1-hop links',
     '  update [--execute] [--redetect]  Check and apply updates (default: dry-run)',
+    '  export [--topic x] [--type t]   Export fragments as JSONL to stdout or file',
+    '  import [--input FILE]            Import fragments from JSONL file or stdin',
     '',
     'Options:',
     '  --help                      Show this help message',
@@ -42,7 +46,7 @@ function printUsage() {
     '  --timeout <ms>              원격 요청 타임아웃 밀리초 (default: 30000)',
     '',
     'Remote-capable commands: recall, remember, stats, inspect',
-    'Local-only commands: serve, migrate, cleanup, backfill, health, update',
+    'Local-only commands: serve, migrate, cleanup, backfill, health, update, export, import',
   ];
   console.log(lines.join('\n'));
 }

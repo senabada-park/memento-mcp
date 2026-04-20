@@ -35,7 +35,7 @@
 | `migration-034-api-key-mode.sql` | `api_keys.default_mode TEXT` 컬럼 + 인덱스 |
 | `migration-035-affect.sql` | `fragments.affect TEXT CHECK(...)` 컬럼 + partial 인덱스 |
 
-`migration-007-flexible-embedding-dims.js`: `EMBEDDING_DIMENSIONS` 변경 또는 임베딩 제공자 전환 시 `fragments`와 `morpheme_dict` 두 테이블의 벡터 컬럼 차원을 동시에 갱신한다. 임베딩 제공자 전환마다 재실행이 필요하다.
+`post-migrate-flexible-embedding-dims.js`: `EMBEDDING_DIMENSIONS` 변경 또는 임베딩 제공자 전환 시 `fragments`와 `morpheme_dict` 두 테이블의 벡터 컬럼 차원을 동시에 갱신한다. 임베딩 제공자 전환마다 재실행이 필요하다.
 
 ### 선택적 CLI 바이너리 (LLM provider)
 

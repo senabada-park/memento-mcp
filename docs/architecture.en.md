@@ -194,7 +194,7 @@ scripts/
 +-- backfill-embeddings.js                       Embedding backfill (one-time)
 +-- normalize-vectors.js                         Vector L2 normalization (one-time)
 +-- migrate.js                                   DB migration runner (schema_migrations-based incremental, .env auto-load, pgvector schema auto-detection)
-+-- migration-007-flexible-embedding-dims.js     Embedding dimension migration
++-- post-migrate-flexible-embedding-dims.js      Embedding dimension migration
 +-- cleanup-noise.js                             Bulk cleanup of low-quality/noise fragments (one-time)
 ```
 
@@ -951,7 +951,7 @@ ModeRegistry.resolve(mode)
 - Alternative model: `Xenova/bge-m3` (1024 dimensions, ~280MB, multilingual high-precision)
 - Singleton pipeline cache: model loaded only on first call, reused thereafter
 - On dimension mismatch, `check-embedding-consistency.js` detects the issue at server startup and halts the process
-- Mutually exclusive with API-based providers (OpenAI, Gemini, etc.). Switching requires DB schema migration-007 + embedding backfill
+- Mutually exclusive with API-based providers (OpenAI, Gemini, etc.). Switching requires running `scripts/post-migrate-flexible-embedding-dims.js` + embedding backfill
 
 ```
 EMBEDDING_PROVIDER=transformers

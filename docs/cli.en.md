@@ -179,7 +179,7 @@ Run after switching embedding providers or changing `EMBEDDING_DIMENSIONS`.
 
 ```bash
 EMBEDDING_DIMENSIONS=384 DATABASE_URL=$DATABASE_URL \
-  node scripts/migration-007-flexible-embedding-dims.js
+  node scripts/post-migrate-flexible-embedding-dims.js
 ```
 
 Updates the vector column dimensions in both `fragments` and `morpheme_dict` simultaneously.

@@ -76,7 +76,7 @@ EMBEDDING_MODEL=Xenova/multilingual-e5-small
 EMBEDDING_DIMENSIONS=384
 
 # 2. 차원 변경 마이그레이션 재실행
-EMBEDDING_DIMENSIONS=384 node scripts/migration-007-flexible-embedding-dims.js
+EMBEDDING_DIMENSIONS=384 node scripts/post-migrate-flexible-embedding-dims.js
 
 # 3. 기존 파편 임베딩 재생성
 node scripts/backfill-embeddings.js
@@ -106,7 +106,7 @@ EMBEDDING_DIMENSIONS=1024
 이후 아래 순서로 실행:
 
 ```bash
-EMBEDDING_DIMENSIONS=1024 node scripts/migration-007-flexible-embedding-dims.js
+EMBEDDING_DIMENSIONS=1024 node scripts/post-migrate-flexible-embedding-dims.js
 node scripts/backfill-embeddings.js
 node server.js
 ```
@@ -158,6 +158,6 @@ OOM (메모리 부족)
 ## 관련 문서
 
 - `tests/integration/README.md` — 통합 테스트 실행 가이드
-- `scripts/migration-007-flexible-embedding-dims.js` — 차원 변경 마이그레이션 스크립트
+- `scripts/post-migrate-flexible-embedding-dims.js` — 차원 변경 마이그레이션 스크립트 (구 경로 `scripts/migration-007-flexible-embedding-dims.js`는 v2.13.0까지 심볼릭 링크 유지)
 - `scripts/check-embedding-consistency.js` — 서버 기동 시 차원 일관성 검증 로직
 - `docs/configuration.md` — 전체 환경변수 목록 (EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_DIMENSIONS 항목 포함)

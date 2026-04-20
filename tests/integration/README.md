@@ -2,6 +2,7 @@
 
 작성자: 최진호
 작성일: 2026-04-18
+수정일: 2026-04-19 (E2E_SESSION_REUSE, E2E_LOCAL_EMBED 추가)
 
 ---
 
@@ -16,26 +17,42 @@ CI에서 무조건 실행되지 않도록 의도적으로 설계된 구조다.
 
 ## 환경변수 가드
 
-| 테스트 파일 | 활성화 변수 |
-|---|---|
-| `llm-cli-smoke.test.js` | `E2E_LLM_CLI=1` |
-| `llm-timeout.test.js` | `E2E_LLM_TIMEOUT=1` |
-| `llm-chain-real.test.js` | `E2E_LLM_CHAIN=1` |
-| `morpheme-llm-real.test.js` | `E2E_MORPHEME=1` |
+이 디렉터리의 모든 E2E 통합 테스트는 환경변수 가드로 기본 skip 처리된다.
+해당 변수가 미설정이거나 `"1"`이 아니면 describe/suite 전체가 skip으로 처리된다.
 
-해당 변수가 미설정이거나 `"1"`이 아니면 describe 전체가 skip으로 처리된다.
+| 테스트 파일 | 활성화 변수 | 전제 조건 |
+|---|---|---|
+| `session-token-reuse.test.js` | `E2E_SESSION_REUSE=1` | 실행 중인 서버, Redis, DB |
+| `llm-cli-smoke.test.js` | `E2E_LLM_CLI=1` | gemini/codex/copilot CLI 인증 |
+| `llm-timeout.test.js` | `E2E_LLM_TIMEOUT=1` | gemini/codex/copilot CLI 인증 |
+| `llm-chain-real.test.js` | `E2E_LLM_CHAIN=1` | LLM_PRIMARY, LLM_FALLBACKS |
+| `morpheme-llm-real.test.js` | `E2E_MORPHEME=1` | LLM CLI 인증, PostgreSQL |
+| `local-embedding.test.js` | `E2E_LOCAL_EMBED=1` | @huggingface/transformers 설치 |
+| `toctou-remember-concurrency.test.js` | `MEMENTO_REMEMBER_ATOMIC=true` (결과 검증 분기) | PostgreSQL |
+
+LLM provider 설정(LLM_PRIMARY, LLM_FALLBACKS, circuit breaker 등) 상세는
+[docs/operations/llm-providers.md](../../docs/operations/llm-providers.md)를 참조한다.
 
 ---
 
 ## 전제 조건
 
+### session-token-reuse.test.js
+- memento-mcp 서버가 `127.0.0.1:${PORT}` (기본 57332)에서 실행 중이어야 한다.
+- `MEMENTO_ACCESS_KEY` 환경변수가 설정되어 있어야 한다.
+- Redis가 기동 중이고 `REDIS_ENABLED=true`여야 한다 (미연결 시 토큰 바인딩이 stub으로 동작하여 재사용 검증 불가).
+- DB 연결은 서버 기동에 필요하지만 테스트 자체에서 직접 접근하지 않는다.
+
+### LLM 관련 테스트 (llm-cli-smoke, llm-timeout, llm-chain-real, morpheme-llm-real)
 - gemini-cli, codex-cli, copilot-cli 바이너리가 PATH에 설치되어 있고 각각 로그인 완료 상태여야 한다.
   - 미인증 CLI는 skip되지 않고 FAIL로 보고된다.
 - PostgreSQL과 Redis가 기동 중이어야 한다.
   - `morpheme-llm-real.test.js`는 DB(PostgreSQL) 연결이 필수다.
   - `llm-cli-smoke.test.js`, `llm-timeout.test.js`, `llm-chain-real.test.js`는 Redis 없이도 실행 가능하다.
-- Node.js 22 이상 (`node:test` runner 사용).
 - 프로젝트 루트에 `.env` 파일이 존재하고 `LLM_PRIMARY`, `LLM_FALLBACKS` 등 LLM 설정이 반영되어 있어야 한다.
+
+### 공통
+- Node.js 22 이상 (`node:test` runner 사용).
 
 ---
 
@@ -70,7 +87,15 @@ CI에서 무조건 실행되지 않도록 의도적으로 설계된 구조다.
 ## 권장 실행 방법
 
 ```bash
-# 4개 파일 전부 순차 실행 (test:integration 스크립트 활용)
+# 세션 토큰 재사용 E2E 단독 실행
+E2E_SESSION_REUSE=1 \
+  MEMENTO_ACCESS_KEY=<key> \
+  REDIS_ENABLED=true \
+  node --test tests/integration/session-token-reuse.test.js
+```
+
+```bash
+# LLM 관련 4개 파일 전부 순차 실행
 E2E_LLM_CLI=1 E2E_LLM_TIMEOUT=1 E2E_LLM_CHAIN=1 E2E_MORPHEME=1 \
   node --test --test-concurrency=1 \
   tests/integration/llm-cli-smoke.test.js \
@@ -88,7 +113,7 @@ E2E_MORPHEME=1    node --test tests/integration/morpheme-llm-real.test.js
 ```
 
 `npm run test:integration`은 `tests/integration/*.test.js`를 glob으로 한 번에 실행하므로,
-LLM 통합 테스트만 선택적으로 실행할 때는 위 개별 파일 실행 방식을 권장한다.
+특정 E2E 테스트만 선택적으로 실행할 때는 위 개별 파일 실행 방식을 권장한다.
 
 ---
 

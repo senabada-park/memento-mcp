@@ -1,20 +1,25 @@
 #!/usr/bin/env node
 /**
- * LLM Caller Prompt E2E Test Script (v2.8.0)
+ * AutoReflect, ConsolidatorGC, ContradictionDetector, MemoryEvaluator 4개 LLM caller가
+ * 외부 LLM으로부터 올바른 JSON 구조를 응답받는지 E2E 검증한다.
+ *
+ * 용도: LLM provider 변경 또는 프롬프트 수정 후, 각 caller의 JSON 스키마 준수 여부를
+ *       실제 외부 LLM 호출로 확인할 때 사용한다.
+ * 전제: LLM_PRIMARY, LLM_FALLBACKS, POSTGRES_*, REDIS_*, OPENAI_API_KEY, LOG_DIR 환경변수
+ *       필수. 외부 LLM 엔드포인트(Gemini CLI, Ollama Cloud 등)가 접근 가능한 상태여야 한다.
+ * 호출: node scripts/test-llm-callers.mjs
+ *       (Ollama Cloud fallback 강제 시: PATH="/usr/bin:/bin" node scripts/test-llm-callers.mjs)
+ * 빈도: 조건부 (LLM provider 교체 또는 프롬프트 수정 후 회귀 확인 목적)
+ *
+ * 검증 케이스 5종:
+ *   1. AutoReflect — _buildReflectPrompts + llmJson, 5개 필수 키 확인
+ *   2. ConsolidatorGC — 장문 텍스트 분할, JSON 배열 타입 확인
+ *   3. ContradictionDetector.askGeminiSupersession — { supersedes: boolean, reasoning: string }
+ *   4. ContradictionDetector.askGeminiContradiction — { contradicts: boolean, reasoning: string }
+ *   5. MemoryEvaluator — { score: number, rationale: string, action: keep|downgrade|discard }
  *
  * 작성자: 최진호
- * 작성일: 2026-04-16
- *
- * 4개 LLM caller (AutoReflect, ConsolidatorGC, ContradictionDetector×2, MemoryEvaluator)
- * 프롬프트 강화 후 외부 LLM(Ollama Cloud 등)이 올바른 JSON 구조로 응답하는지 E2E 검증.
- *
- * 사용법:
- *   PATH strip으로 gemini-cli 차단 (Ollama Cloud fallback 강제)
- *     PATH="/usr/bin:/bin" node scripts/test-llm-callers.mjs
- *   기본 실행 (gemini-cli 우선)
- *     node scripts/test-llm-callers.mjs
- *
- * 요구 환경변수: LLM_PRIMARY, LLM_FALLBACKS, POSTGRES_*, REDIS_*, OPENAI_API_KEY, LOG_DIR
+ * 수정일: 2026-04-19
  */
 
 import { createRequire } from "module";

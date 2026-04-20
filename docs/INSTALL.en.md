@@ -146,7 +146,7 @@ psql $DATABASE_URL -f lib/memory/migration-034-api-key-mode.sql
 psql $DATABASE_URL -f lib/memory/migration-035-affect.sql
 ```
 
-> **Re-running migration-007**: If you change `EMBEDDING_DIMENSIONS` or switch embedding providers, re-run `scripts/migration-007-flexible-embedding-dims.js` to update the vector column dimensions in both the `fragments` and `morpheme_dict` tables simultaneously.
+> **Re-running migration-007**: If you change `EMBEDDING_DIMENSIONS` or switch embedding providers, re-run `scripts/post-migrate-flexible-embedding-dims.js` to update the vector column dimensions in both the `fragments` and `morpheme_dict` tables simultaneously. (Symlink from the old path `scripts/migration-007-flexible-embedding-dims.js` is retained until v2.13.0.)
 
 Since v1.8.0, automatic migration is supported. Instead of running each file manually:
 
@@ -161,7 +161,7 @@ Applied migrations are tracked in `agent_memory.schema_migrations`. Only unappli
 ```bash
 # For models with >2000 dimensions (e.g., Gemini gemini-embedding-001 at 3072 dims) only:
 # EMBEDDING_DIMENSIONS=3072 DATABASE_URL=$DATABASE_URL \
-#   node lib/memory/migration-007-flexible-embedding-dims.js
+#   node scripts/post-migrate-flexible-embedding-dims.js
 
 # One-time L2 normalization of existing embeddings (safe to re-run; idempotent)
 DATABASE_URL=$DATABASE_URL node lib/memory/normalize-vectors.js
@@ -286,7 +286,7 @@ curl -s http://localhost:57332/health | jq .status
 node bin/memento.js health
 ```
 
-A `consistency check result: PASS` log line confirms that `EMBEDDING_DIMENSIONS` matches the actual vector dimensions stored in the database. If `FAIL` appears, re-run `scripts/migration-007-flexible-embedding-dims.js` and restart the server.
+A `consistency check result: PASS` log line confirms that `EMBEDDING_DIMENSIONS` matches the actual vector dimensions stored in the database. If `FAIL` appears, re-run `scripts/post-migrate-flexible-embedding-dims.js` and restart the server.
 
 ## Starting the Server
 

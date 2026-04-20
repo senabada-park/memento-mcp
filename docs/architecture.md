@@ -197,7 +197,7 @@ scripts/
 ├── backfill-embeddings.js                       임베딩 소급 처리 (1회성)
 ├── normalize-vectors.js                         벡터 L2 정규화 (1회성)
 ├── migrate.js                                   DB 마이그레이션 러너 (schema_migrations 기반 증분 적용, .env 자동 로드, pgvector 스키마 자동 감지)
-├── migration-007-flexible-embedding-dims.js     임베딩 차원 마이그레이션
+├── post-migrate-flexible-embedding-dims.js      임베딩 차원 마이그레이션
 └── cleanup-noise.js                             저품질/노이즈 파편 일괄 정리 (1회성)
 ```
 
@@ -954,7 +954,7 @@ ModeRegistry.resolve(mode)
 - 대안 모델: `Xenova/bge-m3` (1024차원, ~280MB, 다국어 고정밀)
 - 싱글톤 파이프라인 캐시: 첫 호출에만 모델을 로드, 이후 재사용
 - 차원 불일치 시 서버 시작 시 `check-embedding-consistency.js`가 자동 검출하여 프로세스 중단
-- OpenAI/Gemini 등 API 기반 provider와 상호 배타. 전환 시 DB 스키마 migration-007 + 임베딩 백필 필수
+- OpenAI/Gemini 등 API 기반 provider와 상호 배타. 전환 시 DB 스키마 `scripts/post-migrate-flexible-embedding-dims.js` + 임베딩 백필 필수
 
 ```
 EMBEDDING_PROVIDER=transformers

@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased] - 2026-04-19
+
+### Changed
+
+- scripts/migration-007-flexible-embedding-dims.js 를 scripts/post-migrate-flexible-embedding-dims.js 로 이름 변경. 자동 마이그레이션 러너(lib/memory/migration-NNN-*.sql)와 수동 dimension 재구성 스크립트를 파일명으로 명확히 구분하기 위함.
+- setup.sh, .env.example 내 구 경로 참조를 신 경로로 일괄 치환.
+
+### Breaking Notice
+
+- scripts/migration-007-flexible-embedding-dims.js 는 신 경로(post-migrate-flexible-embedding-dims.js)를 가리키는 심볼릭 링크로 v2.13.0까지 유지된다.
+- 외부 스크립트나 CI에서 구 경로를 직접 참조하는 경우 scripts/post-migrate-flexible-embedding-dims.js 로 전환할 것을 권고한다.
+
 ## [2.9.0] - 2026-04-18
 
 ### Added
@@ -28,6 +40,14 @@
 - **TemporalLinker `::integer[]` 오캐스팅**: `fragments.key_id`가 TEXT 컬럼인데 `::integer[]` 캐스팅을 사용하여 "연산자 없음: text = integer" 에러가 발생하던 문제. `::text[]`로 교체. (`lib/memory/TemporalLinker.js`)
 - **빈 POST body null crash**: `readJsonBody`가 빈 body를 받아 `JSON.parse(null)`을 반환할 때 발생하던 unhandledRejection. `handleMcpPost` 진입부에서 null을 400 Invalid Request로 거부. `injectSessionContext`에도 null 가드를 이중 방어로 추가.
 - **`npm run test:integration:llm` 서브프로세스 경합**: `--test-concurrency=1` 플래그로 순차 실행을 강제하여 병렬 CLI 서브프로세스 간 경합을 제거.
+
+### Upgrade from v2.8.x
+
+1. `npm install` — package.json 의존성 갱신. `@huggingface/transformers` 패키지가 신규 추가된다.
+2. `npm run migrate` — migration-034(api_keys.default_mode ADD COLUMN), migration-035(fragments.affect ADD COLUMN) 실행. 두 마이그레이션 모두 ADD COLUMN이므로 기존 데이터를 변경하지 않는다.
+3. `EMBEDDING_PROVIDER` 검토 — 기본값(`openai` 계열)을 유지하면 추가 작업 없음. 로컬 임베딩으로 전환할 경우 `EMBEDDING_PROVIDER=transformers`를 설정하고 기존 OpenAI 임베딩과 혼합하지 않도록 `scripts/backfill-embeddings.js`로 전체 재생성 후 서버를 기동한다.
+4. backfill-embeddings (조건부) — `EMBEDDING_PROVIDER` 를 변경한 경우만 해당. `npm run backfill:embeddings`로 embedding IS NULL 파편을 일괄 처리한다.
+5. 서버 재시작 — 기동 시 `scripts/check-embedding-consistency.js`가 DB 차원과 설정 차원의 일치를 자동 검증하며, 불일치 시 즉시 기동을 중단하고 오류를 출력한다.
 
 ### Breaking Changes
 

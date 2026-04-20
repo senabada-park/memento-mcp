@@ -180,7 +180,7 @@ DATABASE_URL=$DATABASE_URL EMBEDDING_DIMENSIONS=1536 \
 
 ```bash
 EMBEDDING_DIMENSIONS=384 DATABASE_URL=$DATABASE_URL \
-  node scripts/migration-007-flexible-embedding-dims.js
+  node scripts/post-migrate-flexible-embedding-dims.js
 ```
 
 `fragments`와 `morpheme_dict` 테이블의 벡터 컬럼 차원을 동시에 갱신한다.

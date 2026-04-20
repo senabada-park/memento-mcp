@@ -105,7 +105,11 @@ gemini-cli, anthropic, openai, google-gemini-api, groq, openrouter, xai, ollama,
 [{"provider": "copilot-cli"}]
 ```
 
-**geminiTimeoutMs**: The `geminiTimeoutMs` value in `config/memory.js` has been raised from 15000ms to **60000ms** to accommodate increased latency from large Gemini CLI prompts.
+**geminiTimeoutMs**: The `morphemeIndex.geminiTimeoutMs` value in `config/memory.js` has been raised from 15000ms to **60000ms**. In Gemini CLI and Ollama Cloud environments, measured response latency frequently reached 20–40s, causing repeated "all LLM providers failed" errors. This adjustment resolves that pattern.
+
+The value is passed directly to the `geminiCLIJson(userPrompt, { timeoutMs: cfg.geminiTimeoutMs })` call inside `MorphemeIndex.tokenize()`. When tokenize fails, no morphemes are extracted and the L3 morpheme search path (the full-text search leg of recall) degrades gracefully via `_fallbackTokenize`. Consequently, timeout-induced tokenize failures translate directly to reduced recall result quality.
+
+**buildChain ordering logic** (`lib/llm/index.js:38–68`): An entries array is constructed from `LLM_PRIMARY` followed by `LLM_FALLBACKS` in declaration order. A `seen` Set removes duplicate providers, and each provider's `isAvailable()` check determines whether it is included in the chain. If `LLM_PRIMARY` also appears in `LLM_FALLBACKS`, the fallback config object takes precedence. A provider that fails `isAvailable()` is excluded from the chain and the next provider is tried immediately. The resulting chain order corresponds 1:1 with the env variable declaration order.
 
 For detailed operational guidance, see `docs/operations/llm-providers.md`.
 
@@ -308,7 +312,7 @@ Switch providers with a single `EMBEDDING_PROVIDER` environment variable. Model,
 
 Embeddings are used for L3 semantic search and automatic link creation.
 
-> Dimension change warning: Changing `EMBEDDING_DIMENSIONS` requires a PostgreSQL schema change. Run `node scripts/migration-007-flexible-embedding-dims.js` followed by `node scripts/backfill-embeddings.js` in order.
+> Dimension change warning: Changing `EMBEDDING_DIMENSIONS` requires a PostgreSQL schema change. Run `node scripts/post-migrate-flexible-embedding-dims.js` followed by `node scripts/backfill-embeddings.js` in order.
 
 ---
 
@@ -340,7 +344,7 @@ GEMINI_API_KEY=AIza...
 
 ```bash
 EMBEDDING_DIMENSIONS=3072 DATABASE_URL=$DATABASE_URL \
-  node scripts/migration-007-flexible-embedding-dims.js
+  node scripts/post-migrate-flexible-embedding-dims.js
 DATABASE_URL=$DATABASE_URL node scripts/backfill-embeddings.js
 ```
 
@@ -401,7 +405,7 @@ Find your Account ID on the Cloudflare dashboard → account home, lower right. 
 
 ```bash
 EMBEDDING_DIMENSIONS=384 DATABASE_URL=$DATABASE_URL \
-  node scripts/migration-007-flexible-embedding-dims.js
+  node scripts/post-migrate-flexible-embedding-dims.js
 DATABASE_URL=$DATABASE_URL node scripts/backfill-embeddings.js
 ```
 
@@ -446,7 +450,7 @@ Switching procedure:
 ```bash
 # 1. Update schema dimensions (example: 1536 -> 384)
 EMBEDDING_DIMENSIONS=384 DATABASE_URL=$DATABASE_URL \
-  node scripts/migration-007-flexible-embedding-dims.js
+  node scripts/post-migrate-flexible-embedding-dims.js
 
 # 2. Regenerate embeddings for existing fragments
 DATABASE_URL=$DATABASE_URL node scripts/backfill-embeddings.js
@@ -694,12 +698,14 @@ Locks the session operation scope to a preset. Three configuration paths are ava
 2. **initialize parameter**: `{ "method": "initialize", "params": { "mode": "<preset>" } }`
 3. **Per-key default** (admin console): `api_keys.default_mode` column (migration-034)
 
-| Preset | Description | Key Restrictions |
-|--------|-------------|-----------------|
-| `recall-only` | Read-only. Write tools blocked | remember, forget, amend, reflect unavailable |
-| `write-only` | Write-only. Search tools blocked | recall, context unavailable |
-| `onboarding` | New-user guidance. get_skill_guide surfaced first | No restrictions (guidance emphasized) |
-| `audit` | Audit/compliance. All writes blocked | remember, forget, amend, reflect, link unavailable |
+| Preset | Description | Representative excluded_tools | Recommended context |
+|--------|-------------|-------------------------------|---------------------|
+| `recall-only` | Read-only. Write tools blocked | remember, batch_remember, amend, forget, link, reflect, memory_consolidate | Shared API keys with read-only grants; read-only dashboard integrations |
+| `write-only` | Write-only. Search tools blocked | recall, context, reconstruct_history, graph_explore, fragment_history, search_traces, memory_stats | CI/cron jobs that only record results. Minimizes token consumption by hiding unnecessary retrieval tools |
+| `onboarding` | New-user guidance. All tools exposed + beginner guide injected | (none — excluded_tools: []) | Auto-entered when fragment count is below 50; automatically transitions to normal mode once that threshold is exceeded |
+| `audit` | Audit/compliance. Master key only. All writes blocked | remember, batch_remember, amend, forget, link, reflect | Operational audits, history reconstruction, memory statistics. `requiresMaster: true` |
+
+Each preset's `fixed_tools` (explicit exposure list), `skill_guide_override` (tool guide override), and `requiresMaster` fields are defined in `lib/memory/modes/<preset>.json`.
 
 When mode is unset or NULL, only the existing RBAC-based permission system applies.
 

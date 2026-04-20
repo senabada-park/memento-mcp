@@ -135,7 +135,7 @@ case "$EMBED_CHOICE" in
     EMBEDDING_API_KEY=$(ask_secret "Gemini API Key")
     EMBEDDING_MODEL=$(ask "Model" "gemini-embedding-001")
     EMBEDDING_DIMENSIONS=$(ask "Dimensions" "3072")
-    warn "3072 dims: fragments + morpheme_dict 두 테이블을 동시 처리합니다 (v2.9.0+). migration-007 required."
+    warn "3072 dims: fragments + morpheme_dict 두 테이블을 동시 처리합니다 (v2.9.0+). post-migrate-flexible-embedding-dims required."
     ;;
   3)
     EMBEDDING_PROVIDER="ollama"
@@ -171,7 +171,7 @@ case "$EMBED_CHOICE" in
     fi
     warn "API keys (OPENAI/GEMINI/EMBEDDING_API_KEY) must NOT be set -- 상호 배타 가드."
     warn "Initial model download (~120MB) on first use."
-    warn "fragments + morpheme_dict 두 테이블을 동시 처리합니다 (v2.9.0+). migration-007 required."
+    warn "fragments + morpheme_dict 두 테이블을 동시 처리합니다 (v2.9.0+). post-migrate-flexible-embedding-dims required."
     ;;
 esac
 
@@ -373,18 +373,18 @@ if ask_yn "Apply PostgreSQL schema?" "y"; then
   if [[ -n "$EMBEDDING_PROVIDER" ]]; then
     _run_migration_007=false
     if [[ "${EMBEDDING_DIMENSIONS:-0}" -gt 2000 ]]; then
-      warn "Dimensions ${EMBEDDING_DIMENSIONS} > 2000: fragments + morpheme_dict 두 테이블을 동시 처리합니다 (v2.9.0+). migration-007 required."
+      warn "Dimensions ${EMBEDDING_DIMENSIONS} > 2000: fragments + morpheme_dict 두 테이블을 동시 처리합니다 (v2.9.0+). post-migrate-flexible-embedding-dims required."
       _run_migration_007=true
     elif [[ "$EMBEDDING_PROVIDER" == "transformers" ]]; then
-      warn "transformers provider: fragments + morpheme_dict 두 테이블을 동시 처리합니다 (v2.9.0+). migration-007 recommended."
+      warn "transformers provider: fragments + morpheme_dict 두 테이블을 동시 처리합니다 (v2.9.0+). post-migrate-flexible-embedding-dims recommended."
       _run_migration_007=true
     fi
 
     if [[ "$_run_migration_007" == "true" ]]; then
-      if ask_yn "Run migration-007 (embedding dimension update)?" "y"; then
+      if ask_yn "Run post-migrate-flexible-embedding-dims (embedding dimension update)?" "y"; then
         EMBEDDING_DIMENSIONS="$EMBEDDING_DIMENSIONS" DATABASE_URL="$DATABASE_URL" \
-          node scripts/migration-007-flexible-embedding-dims.js
-        success "migration-007 done."
+          node scripts/post-migrate-flexible-embedding-dims.js
+        success "post-migrate-flexible-embedding-dims done."
       fi
     fi
   fi

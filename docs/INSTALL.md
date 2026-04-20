@@ -84,7 +84,7 @@ psql $DATABASE_URL -f lib/memory/migration-034-api-key-mode.sql                 
 psql $DATABASE_URL -f lib/memory/migration-035-affect.sql                                # fragments.affect 컬럼 + partial index (v2.9.0 affective tagging)
 ```
 
-> **migration-007 재실행**: `EMBEDDING_DIMENSIONS`를 변경하거나 임베딩 제공자를 전환한 경우, `migration-007-flexible-embedding-dims.js`를 재실행하면 `fragments` 테이블과 `morpheme_dict` 테이블의 벡터 차원이 동시에 갱신된다.
+> **migration-007 재실행**: `EMBEDDING_DIMENSIONS`를 변경하거나 임베딩 제공자를 전환한 경우, `post-migrate-flexible-embedding-dims.js`를 재실행하면 `fragments` 테이블과 `morpheme_dict` 테이블의 벡터 차원이 동시에 갱신된다. (v2.13.0까지 구 경로 `scripts/migration-007-flexible-embedding-dims.js` 심볼릭 링크 유지)
 
 > **rollback 파일 네이밍**: rollback SQL 파일은 `rollback-migration-NNN-*.sql` 형식으로 이름을 지정해야 한다. `migrate.js`의 auto-pickup glob은 `migration-*.sql` 패턴만 인식하므로, `rollback-` 접두어를 붙이면 자동 실행에서 제외된다.
 
@@ -107,7 +107,7 @@ DATABASE_URL=postgresql://user:pass@host:port/dbname npm run migrate
 ```bash
 # 기본 임베딩(1536차원) 사용 시: migration-007 불필요
 # 2000차원 초과 모델(Gemini gemini-embedding-001 등) 사용 시:
-# EMBEDDING_DIMENSIONS=3072 DATABASE_URL=$DATABASE_URL node scripts/migration-007-flexible-embedding-dims.js
+# EMBEDDING_DIMENSIONS=3072 DATABASE_URL=$DATABASE_URL node scripts/post-migrate-flexible-embedding-dims.js
 
 DATABASE_URL=$DATABASE_URL node scripts/normalize-vectors.js  # 임베딩 L2 정규화 (1회)
 
@@ -239,7 +239,7 @@ curl -s http://localhost:57332/health | jq .status
 node bin/memento.js health
 ```
 
-`consistency check result: PASS` 로그가 출력되면 임베딩 차원과 DB 벡터가 일치하는 상태다. `FAIL`이 출력되면 `EMBEDDING_DIMENSIONS` 설정과 실제 DB 차원 불일치 — `scripts/migration-007-flexible-embedding-dims.js`를 재실행한 뒤 서버를 재시작한다.
+`consistency check result: PASS` 로그가 출력되면 임베딩 차원과 DB 벡터가 일치하는 상태다. `FAIL`이 출력되면 `EMBEDDING_DIMENSIONS` 설정과 실제 DB 차원 불일치 — `scripts/post-migrate-flexible-embedding-dims.js`를 재실행한 뒤 서버를 재시작한다.
 
 ## CLI 사용법
 

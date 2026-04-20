@@ -54,6 +54,14 @@ async function main() {
 
   const args = parseArgs(rest);
 
+  // 서브명령별 --help / -h
+  if (args.help || args.h) {
+    const mod = await COMMANDS[cmd]();
+    const helpText = mod.usage ?? mod.default?.usage ?? `No help available for: ${cmd}`;
+    console.log(helpText);
+    process.exit(0);
+  }
+
   try {
     const mod = await COMMANDS[cmd]();
     await mod.default(args);

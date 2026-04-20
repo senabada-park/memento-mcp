@@ -158,6 +158,66 @@ See [integration guides](docs/getting-started/) for platform-specific setup.
 | OAuth Integration | RFC 7591 Dynamic Client Registration, Claude.ai Web and ChatGPT integration support |
 | **Workspace isolation** | Partition memories by project, role, or client within the same API key. Auto-tag via `api_keys.default_workspace`, auto-filter on recall. |
 
+### What's New in v2.12.0
+
+Remote CLI, X-RateLimit headers, dryRun, _meta wrapper, sparse fields, and idempotency.
+
+- Remote CLI: `--remote URL --key KEY` global flags let you operate a remote Memento server without a local instance. `MEMENTO_CLI_REMOTE` / `MEMENTO_CLI_KEY` environment variables are also supported.
+- X-RateLimit headers: All API responses include `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Resource` headers. Headers are omitted for master key or when limit is null. A 10-second module-level TTL cache minimizes DB lookups.
+- dryRun parameter: remember / link / forget / amend now accept `dryRun: true`. Returns the simulated result without any DB side effects. Defaults to false.
+
+CLI examples:
+
+```bash
+# Remote recall via environment variable
+MEMENTO_CLI_REMOTE=https://memento.anchormind.net/mcp MEMENTO_CLI_KEY=mmcp_xxx memento-mcp recall "query"
+
+# Remote recall via flags
+memento-mcp recall "query" --remote https://memento.anchormind.net/mcp --key mmcp_xxx
+
+# Table output, limit 5
+memento-mcp recall "query" --format table --limit 5
+
+# Prevent duplicate storage with idempotency key
+memento-mcp remember "content" --topic project --idempotency-key k1
+```
+
+### What's New in v2.11.0
+
+H group: _meta wrapper, sparse fields, CLI improvements, and idempotency.
+
+- _meta wrapper: recall / context responses now include a `_meta: { searchEventId, hints, suggestion }` field. The existing top-level `_searchEventId` / `_memento_hint` / `_suggestion` fields are deprecated and will be removed in v2.13.0. Use `_meta.*` instead.
+- sparse fields: Pass a `fields` array to recall to restrict the returned fields. Whitelist of 17: id / content / type / topic / keywords / importance / created_at / access_count / confidence / linked / explanations / workspace / context_summary / case_id / valid_to / affect / ema_activation.
+- CLI `--format`: `--format table|json|csv` flag controls output format. Defaults to table in TTY environments and json when piped. `--json` is an alias for `--format json`.
+- CLI `--help`: All 11 subcommands support `--help` / `-h`.
+- idempotencyKey: remember / batchRemember accept an `idempotencyKey` parameter (max 128 chars) to prevent duplicate storage within the same key_id scope. migration-036 adds the `fragments.idempotency_key` column.
+
+_meta structure example:
+
+```json
+{
+  "fragments": [...],
+  "_meta": {
+    "searchEventId": "evt-abc123",
+    "hints": { "signal": "consider_context" },
+    "suggestion": { "code": "large_limit_no_budget", "message": "..." }
+  }
+}
+```
+
+Deprecation notice: top-level `_searchEventId` / `_memento_hint` / `_suggestion` fields will be removed in v2.13.0 after the final v2.12.x release. Migrate to `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`.
+
+### What's New in v2.10.0
+
+Phase 5-B internal decomposition. No changes to the public API.
+
+- MemoryManager reduced from 1252 to 259 lines as a facade. Business logic was moved into 4 classes under `lib/memory/processors/`:
+  - MemoryRememberer: remember / batchRemember
+  - MemoryRecaller: recall / context
+  - MemoryReflector: reflect
+  - MemoryLinker: link / graph_explore
+- Shared property synchronization: facade and processors sync shared setters via the `_installSharedSync` pattern.
+
 ### What's New in v2.9.0
 
 - **Mode presets**: Four JSON presets — recall-only, write-only, onboarding, audit. Activate via `X-Memento-Mode` header or `api_keys.default_mode` DB column to constrain which tools are exposed per session. Enables role-based access control without any code changes.

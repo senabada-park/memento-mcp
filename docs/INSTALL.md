@@ -82,9 +82,22 @@ psql $DATABASE_URL -f lib/memory/migration-032-fragment-claims.sql              
 psql $DATABASE_URL -f lib/memory/migration-033-symbolic-hard-gate.sql                    # api_keys.symbolic_hard_gate 컬럼 (v2.8.0 symbolic hard gate opt-in)
 psql $DATABASE_URL -f lib/memory/migration-034-api-key-mode.sql                          # api_keys.default_mode 컬럼 (v2.9.0 mode preset)
 psql $DATABASE_URL -f lib/memory/migration-035-affect.sql                                # fragments.affect 컬럼 + partial index (v2.9.0 affective tagging)
+psql $DATABASE_URL -f lib/memory/migration-036-fragment-idempotency.sql                  # fragments.idempotency_key 컬럼 + 테넌트별 partial unique index 2개 (v2.12.0)
 ```
 
 > **migration-007 재실행**: `EMBEDDING_DIMENSIONS`를 변경하거나 임베딩 제공자를 전환한 경우, `post-migrate-flexible-embedding-dims.js`를 재실행하면 `fragments` 테이블과 `morpheme_dict` 테이블의 벡터 차원이 동시에 갱신된다. (v2.13.0까지 구 경로 `scripts/migration-007-flexible-embedding-dims.js` 심볼릭 링크 유지)
+
+> **migration-036 CONCURRENTLY 옵션**: migration-036은 트랜잭션 내에서 실행되므로 `CREATE UNIQUE INDEX`를 사용한다. 수백만 건 이상의 대규모 운영 테이블에서 잠금 최소화가 필요한 경우, `npm run migrate` 실행 전에 아래 두 문을 수동으로 실행하면 IF NOT EXISTS 가드에 의해 자동 실행 시 안전하게 SKIP된다.
+>
+> ```sql
+> CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_fragments_idempotency_tenant
+>   ON agent_memory.fragments (key_id, idempotency_key)
+>   WHERE idempotency_key IS NOT NULL AND key_id IS NOT NULL;
+>
+> CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_fragments_idempotency_master
+>   ON agent_memory.fragments (idempotency_key)
+>   WHERE idempotency_key IS NOT NULL AND key_id IS NULL;
+> ```
 
 > **rollback 파일 네이밍**: rollback SQL 파일은 `rollback-migration-NNN-*.sql` 형식으로 이름을 지정해야 한다. `migrate.js`의 auto-pickup glob은 `migration-*.sql` 패턴만 인식하므로, `rollback-` 접두어를 붙이면 자동 실행에서 제외된다.
 
@@ -92,6 +105,35 @@ v1.8.0부터 자동 마이그레이션을 지원한다. 위 수동 실행 대신
 
 ```bash
 DATABASE_URL=postgresql://user:pass@host:port/dbname npm run migrate
+```
+
+### v2.9.x → v2.12.0 업그레이드 경로
+
+```bash
+# 1. 의존성 업데이트
+npm install
+
+# 2. 마이그레이션 실행 (migration-036 포함)
+npm run migrate
+
+# 3. EMBEDDING_PROVIDER 재검토
+#    provider 변경 또는 EMBEDDING_DIMENSIONS 수정 시:
+#    EMBEDDING_DIMENSIONS=N DATABASE_URL=$DATABASE_URL node scripts/post-migrate-flexible-embedding-dims.js
+#    DATABASE_URL=$DATABASE_URL node scripts/backfill-embeddings.js
+
+# 4. .env 신규 항목 확인
+#    MEMENTO_CLI_REMOTE, MEMENTO_CLI_KEY 추가 여부 검토 (원격 CLI 경유 사용 시)
+
+# 5. 서버 재시작
+node server.js
+```
+
+migration-036 인덱스 적용 확인:
+
+```sql
+-- psql 접속 후
+\d agent_memory.fragments
+-- idx_fragments_idempotency_tenant, idx_fragments_idempotency_master 두 인덱스가 보여야 한다.
 ```
 
 `agent_memory.schema_migrations` 테이블에 적용 이력이 기록되며, 미적용 파일만 순서대로 실행된다.

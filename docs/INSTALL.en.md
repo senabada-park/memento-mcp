@@ -144,6 +144,9 @@ psql $DATABASE_URL -f lib/memory/migration-034-api-key-mode.sql
 
 # v2.9.0: fragments.affect column + partial index (affective tagging)
 psql $DATABASE_URL -f lib/memory/migration-035-affect.sql
+
+# v2.12.0: fragments.idempotency_key column + two per-tenant partial unique indexes
+psql $DATABASE_URL -f lib/memory/migration-036-fragment-idempotency.sql
 ```
 
 > **Re-running migration-007**: If you change `EMBEDDING_DIMENSIONS` or switch embedding providers, re-run `scripts/post-migrate-flexible-embedding-dims.js` to update the vector column dimensions in both the `fragments` and `morpheme_dict` tables simultaneously. (Symlink from the old path `scripts/migration-007-flexible-embedding-dims.js` is retained until v2.13.0.)
@@ -152,6 +155,47 @@ Since v1.8.0, automatic migration is supported. Instead of running each file man
 
 ```bash
 DATABASE_URL=postgresql://user:pass@host:port/dbname npm run migrate
+```
+
+> **migration-036 CONCURRENTLY option**: migration-036 runs inside a transaction, so it uses `CREATE UNIQUE INDEX` (not CONCURRENTLY). For large production tables (millions of fragments) where minimizing lock time is critical, run the two statements below manually before `npm run migrate`. The IF NOT EXISTS guard ensures they are safely skipped during automatic execution.
+>
+> ```sql
+> CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_fragments_idempotency_tenant
+>   ON agent_memory.fragments (key_id, idempotency_key)
+>   WHERE idempotency_key IS NOT NULL AND key_id IS NOT NULL;
+>
+> CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_fragments_idempotency_master
+>   ON agent_memory.fragments (idempotency_key)
+>   WHERE idempotency_key IS NOT NULL AND key_id IS NULL;
+> ```
+
+### v2.9.x to v2.12.0 Upgrade Path
+
+```bash
+# 1. Update dependencies
+npm install
+
+# 2. Run migrations (includes migration-036)
+npm run migrate
+
+# 3. Review EMBEDDING_PROVIDER
+#    If you changed the provider or EMBEDDING_DIMENSIONS:
+#    EMBEDDING_DIMENSIONS=N DATABASE_URL=$DATABASE_URL node scripts/post-migrate-flexible-embedding-dims.js
+#    DATABASE_URL=$DATABASE_URL node scripts/backfill-embeddings.js
+
+# 4. Check .env for new entries
+#    Add MEMENTO_CLI_REMOTE and MEMENTO_CLI_KEY if using the CLI in remote mode
+
+# 5. Restart the server
+node server.js
+```
+
+Verify migration-036 index application:
+
+```sql
+-- In psql
+\d agent_memory.fragments
+-- Both idx_fragments_idempotency_tenant and idx_fragments_idempotency_master should appear.
 ```
 
 Applied migrations are tracked in `agent_memory.schema_migrations`. Only unapplied files are executed in order.

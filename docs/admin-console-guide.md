@@ -258,6 +258,24 @@ API: `GET /memory/graph?topic=xxx&limit=50` -> `{ nodes: [...], edges: [...] }`
 
 ---
 
+## X-RateLimit 응답 헤더 (v2.12.0 M3)
+
+MCP 엔드포인트와 Admin API 응답 모두에 `X-RateLimit-*` 헤더가 포함된다.
+
+| 헤더 | 설명 |
+|------|------|
+| `X-RateLimit-Limit` | 해당 리소스의 윈도우 내 최대 요청 허용 횟수 |
+| `X-RateLimit-Remaining` | 현재 윈도우에서 남은 요청 횟수 |
+| `X-RateLimit-Resource` | 제한이 적용된 리소스 식별자 (ip, key 등) |
+
+이 헤더는 Admin UI의 브라우저 개발자 도구 > Network 탭에서 확인할 수 있다. 클라이언트 측에서 `Remaining` 값을 모니터링하여 429 오류 전에 요청 속도를 조절할 수 있다.
+
+## v2.11.0 응답 구조 변경
+
+v2.11.0의 `_meta` 래퍼 추가는 Admin UI 화면에 영향을 주지 않는다. Admin UI는 내부 REST API(`/v1/internal/model/nothing/*`)를 사용하며 MCP 도구 응답 포맷(`_meta`)에 의존하지 않는다.
+
+---
+
 ## 일반 조작
 
 공통적으로 적용되는 조작 방법:

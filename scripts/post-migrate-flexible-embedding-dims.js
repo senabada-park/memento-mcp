@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
- * post-migrate-flexible-embedding-dims.js
+ * post-migrate-flexible-embedding-dims.js — embedding 컬럼 차원 동시 조정
  *
  * 작성자: 최진호
  * 작성일: 2026-03-08
- * 수정일: 2026-04-19
+ * 수정일: 2026-04-20 (v2.12.0 문서 현행화 반영)
  *
- * EMBEDDING_DIMENSIONS 환경변수에 따라 fragments + morpheme_dict 테이블의
- * embedding 컬럼 타입을 동시에 조정한다.
- * - ≤2000차원: vector(N)  + HNSW 인덱스
- * - >2000차원: halfvec(N) + HNSW 인덱스 (pgvector ≥0.7.0 필요)
- *
- * 실행: EMBEDDING_DIMENSIONS=3072 DATABASE_URL=$DATABASE_URL node scripts/post-migrate-flexible-embedding-dims.js
+ * 목적: EMBEDDING_DIMENSIONS 환경변수에 따라 fragments + morpheme_dict 테이블의
+ *       embedding 컬럼 타입을 동시에 조정한다.
+ *       - ≤2000차원: vector(N)  + HNSW 인덱스
+ *       - >2000차원: halfvec(N) + HNSW 인덱스 (pgvector ≥0.7.0 필요)
+ * 호출 조건: EMBEDDING_DIMENSIONS 변경 또는 EMBEDDING_PROVIDER 전환 시
+ * 빈도: 조건부 1회
+ * 의존: DATABASE_URL, EMBEDDING_DIMENSIONS
+ * 관련 문서: docs/INSTALL.md#업그레이드-기존-설치, docs/operations/maintenance.md
  *
  * 주의: 컬럼 타입 변경 시 기존 임베딩 데이터가 NULL로 초기화된다.
  *       실행 후 backfill-embeddings.js로 재임베딩이 필요하다.

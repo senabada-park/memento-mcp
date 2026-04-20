@@ -40,6 +40,14 @@
 | ENABLE_RECONSOLIDATION | false | ReconsolidationEngine 활성화. true 시 tool_feedback과 contradicts 감지 시 fragment_links weight/confidence를 동적 갱신한다 |
 | ENABLE_SPREADING_ACTIVATION | false | SpreadingActivation 활성화. true 시 recall의 contextText 파라미터로 관련 파편을 선제적 활성화한다. 레이턴시 영향 측정 후 활성화 권장 |
 | ENABLE_PATTERN_ABSTRACTION | false | 패턴 추상화 활성화. 데이터 충분 축적 후 활성화 예정 (현재 미구현) |
+| MEMENTO_REMEMBER_ATOMIC | false | true 시 remember()의 quota check + INSERT를 단일 트랜잭션으로 원자화. BEGIN → api_keys FOR UPDATE(quota 재검증) → INSERT → COMMIT 순서로 TOCTOU를 완전 차단. v2.10.1 R12 핫픽스로 TDZ 버그 수정 완료, atomic 경로 정상 동작 확인. false(기본)는 선제 quota check만 수행하며 동시 요청이 드문 환경에 적합 |
+
+#### CLI 원격 접속 (v2.12.0 M1)
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| MEMENTO_CLI_REMOTE | (없음) | CLI `--remote` 플래그 미지정 시 사용할 원격 MCP 서버 URL. 예: `https://memento.anchormind.net/mcp` |
+| MEMENTO_CLI_KEY | (없음) | CLI `--key` 플래그 미지정 시 사용할 원격 서버 인증용 API 키 |
 
 #### Symbolic Memory (v2.8.0, opt-in)
 

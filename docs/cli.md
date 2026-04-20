@@ -20,22 +20,55 @@ node bin/memento.js stats
 
 ---
 
+## 전역 플래그
+
+모든 서브명령에서 공통으로 사용할 수 있는 플래그다.
+
+| 플래그 | 설명 |
+|--------|------|
+| `--help`, `-h` | 서브명령별 상세 도움말 출력 |
+| `--format table\|json\|csv` | 출력 포맷. TTY 환경에서는 기본 `table`, 파이프/리다이렉트 환경에서는 `json` |
+| `--json` | `--format json` 별칭 (하위 호환) |
+| `--remote URL` | 원격 MCP 서버 URL. 미지정 시 `MEMENTO_CLI_REMOTE` 환경변수 사용 |
+| `--key KEY` | 원격 서버 인증용 Bearer API 키. 미지정 시 `MEMENTO_CLI_KEY` 환경변수 사용 |
+| `--timeout ms` | 원격 HTTP 요청 타임아웃 (기본: 30000ms) |
+| `--verbose` | 에러 시 스택 트레이스 출력 |
+
+### 원격 접속 환경변수
+
+| 변수 | 설명 |
+|------|------|
+| `MEMENTO_CLI_REMOTE` | `--remote` 미지정 시 사용할 MCP 서버 URL |
+| `MEMENTO_CLI_KEY` | `--key` 미지정 시 사용할 API 키 |
+
+---
+
+## 서브명령 분류
+
+### local-only (원격 접속 불가)
+
+`serve`, `migrate`, `cleanup`, `backfill`, `health`, `update` 는 직접 DB / 프로세스에 접근하는 명령이므로 `--remote` 플래그와 함께 사용하면 에러를 반환한다.
+
+### 원격 지원
+
+`recall`, `remember`, `stats`, `inspect` 는 `--remote URL --key KEY`로 원격 MCP 서버를 경유하여 실행할 수 있다.
+
+---
+
 ## 명령어 목록
 
-| 커맨드 | 설명 |
-|--------|------|
-| `serve` | MCP 서버 시작 |
-| `migrate` | DB 마이그레이션 실행 |
-| `cleanup [--execute]` | 노이즈 파편 정리 (기본 dry-run) |
-| `backfill` | 누락된 임베딩 백필 |
-| `stats` | 파편/앵커/토픽 통계 |
-| `health` | DB/Redis/임베딩 연결 진단 |
-| `recall <query> [--topic x] [--limit n] [--time-range from,to]` | 터미널 recall |
-| `remember <content> --topic x --type fact` | 터미널 remember |
-| `inspect <id>` | 파편 상세 + 1-hop 링크 |
-| `update [--execute] [--redetect]` | 업데이트 확인 및 적용 (기본 dry-run) |
-
-모든 명령은 `--json` 플래그로 JSON 출력 지원. `--verbose` 플래그로 스택 트레이스 출력.
+| 커맨드 | 설명 | 원격 지원 |
+|--------|------|-----------|
+| `serve` | MCP 서버 시작 | 아니오 |
+| `migrate` | DB 마이그레이션 실행 | 아니오 |
+| `cleanup [--execute]` | 노이즈 파편 정리 (기본 dry-run) | 아니오 |
+| `backfill` | 누락된 임베딩 백필 | 아니오 |
+| `stats` | 파편/앵커/토픽 통계 | 예 |
+| `health` | DB/Redis/임베딩 연결 진단 | 아니오 |
+| `recall <query>` | 터미널 recall | 예 |
+| `remember <content>` | 터미널 remember | 예 |
+| `inspect <id>` | 파편 상세 + 1-hop 링크 | 예 |
+| `update [--execute] [--redetect]` | 업데이트 확인 및 적용 (기본 dry-run) | 아니오 |
 
 ---
 
@@ -53,6 +86,12 @@ npm start
 
 `PORT` 환경변수로 포트 지정 (기본: 57332).
 
+도움말:
+
+```bash
+node bin/memento.js serve --help
+```
+
 ### migrate
 
 `lib/memory/migration-*.sql` 파일을 순서대로 실행한다. 이미 적용된 마이그레이션은 건너뛴다.
@@ -64,6 +103,12 @@ npm run migrate
 ```
 
 적용 이력은 `agent_memory.schema_migrations` 테이블에 기록된다.
+
+도움말:
+
+```bash
+node bin/memento.js migrate --help
+```
 
 ### cleanup
 
@@ -96,8 +141,40 @@ npm run backfill:embeddings
 파편 수, 앵커 수, 토픽별 분포 등 현황을 출력한다.
 
 ```bash
+# TTY 환경 — table 포맷 (기본)
 node bin/memento.js stats
+
+# JSON 포맷
+node bin/memento.js stats --format json
+
+# CSV 포맷
+node bin/memento.js stats --format csv
+
+# --json 별칭 (--format json 동일)
 node bin/memento.js stats --json
+
+# 원격 서버 조회
+node bin/memento.js stats --remote https://memento.anchormind.net/mcp --key mmcp_xxx
+```
+
+출력 예시 (`--format table`):
+
+```
+fragments   anchors   topics
+----------  --------  ------
+1204        38        12
+```
+
+출력 예시 (`--format json`):
+
+```json
+{"fragments": 1204, "anchors": 38, "topics": 12}
+```
+
+도움말:
+
+```bash
+node bin/memento.js stats --help
 ```
 
 ### health
@@ -106,26 +183,84 @@ DB 연결, Redis 상태, 임베딩 provider 동작 여부를 진단한다.
 
 ```bash
 node bin/memento.js health
+node bin/memento.js health --format json
 ```
 
 ### recall
 
-터미널에서 파편 검색을 실행한다. 서버가 실행 중이지 않아도 동작한다.
+터미널에서 파편 검색을 실행한다. 서버가 실행 중이지 않아도 로컬 DB에서 직접 동작한다. `--remote` 옵션으로 원격 서버를 경유할 수도 있다.
 
 ```bash
+# 기본 검색
 node bin/memento.js recall "검색어"
+
+# 옵션 조합
 node bin/memento.js recall "nginx 에러" --topic my-project --limit 5
+
+# 시간 범위 필터
 node bin/memento.js recall "2026-01-01 이후 기록" --time-range 2026-01-01,2026-12-31
-node bin/memento.js recall "검색어" --json
+
+# 출력 포맷 지정
+node bin/memento.js recall "검색어" --format table
+node bin/memento.js recall "검색어" --format json
+node bin/memento.js recall "검색어" --format csv
+
+# 원격 서버 경유
+node bin/memento.js recall "검색어" --remote https://memento.anchormind.net/mcp --key mmcp_xxx
+
+# 환경변수로 원격 설정 후 사용
+MEMENTO_CLI_REMOTE=https://memento.anchormind.net/mcp MEMENTO_CLI_KEY=mmcp_xxx \
+  node bin/memento.js recall "검색어"
+```
+
+옵션:
+
+| 플래그 | 설명 |
+|--------|------|
+| `--topic <t>` | 주제 필터 |
+| `--type <t>` | 파편 유형 필터 (fact, error, procedure, decision, preference, episode) |
+| `--limit <n>` | 반환 건수 상한 (기본: 10) |
+| `--time-range from,to` | 날짜 범위 필터 (ISO 8601) |
+
+도움말:
+
+```bash
+node bin/memento.js recall --help
 ```
 
 ### remember
 
-터미널에서 파편을 저장한다.
+터미널에서 파편을 저장한다. `--remote` 옵션으로 원격 서버에 저장할 수 있다.
 
 ```bash
+# 기본 저장
 node bin/memento.js remember "PostgreSQL 연결 시 pg_hba.conf 설정 필요" --topic infra --type fact
+
+# 절차 저장
 node bin/memento.js remember "배포 완료" --topic deploy-2026 --type procedure
+
+# idempotencyKey 지정 (중복 저장 방지)
+node bin/memento.js remember "nginx 재시작 후 443 포트 정상" --topic infra --type fact \
+  --idempotency-key "infra-nginx-restart-2026-04-20"
+
+# 원격 서버에 저장
+node bin/memento.js remember "배포 완료" --topic deploy-2026 --type procedure \
+  --remote https://memento.anchormind.net/mcp --key mmcp_xxx
+```
+
+옵션:
+
+| 플래그 | 설명 |
+|--------|------|
+| `--topic <t>` | 주제 태그 (권장) |
+| `--type <t>` | 파편 유형 (fact, error, procedure, decision, preference, episode) |
+| `--importance <n>` | 중요도 0.0~1.0 |
+| `--idempotency-key <k>` | 동일 키가 있으면 저장 건너뜀 (멱등성 보장) |
+
+도움말:
+
+```bash
+node bin/memento.js remember --help
 ```
 
 ### inspect
@@ -134,7 +269,17 @@ node bin/memento.js remember "배포 완료" --topic deploy-2026 --type procedur
 
 ```bash
 node bin/memento.js inspect frag-00abc123
-node bin/memento.js inspect frag-00abc123 --json
+node bin/memento.js inspect frag-00abc123 --format json
+node bin/memento.js inspect frag-00abc123 --format table
+
+# 원격 서버 조회
+node bin/memento.js inspect frag-00abc123 --remote https://memento.anchormind.net/mcp --key mmcp_xxx
+```
+
+도움말:
+
+```bash
+node bin/memento.js inspect --help
 ```
 
 ### update
@@ -145,6 +290,54 @@ node bin/memento.js inspect frag-00abc123 --json
 node bin/memento.js update              # dry-run: 사용 가능한 업데이트 확인
 node bin/memento.js update --execute    # 업데이트 적용
 node bin/memento.js update --redetect   # 설치 방식 재탐지 후 업데이트
+```
+
+도움말:
+
+```bash
+node bin/memento.js update --help
+```
+
+---
+
+## 원격 접속 사용 예시
+
+`--remote`와 `--key`를 직접 지정하거나 환경변수로 설정한다.
+
+```bash
+# 직접 지정
+node bin/memento.js recall "배포 기록" \
+  --remote https://memento.anchormind.net/mcp \
+  --key mmcp_xxx
+
+# 환경변수로 설정 후 사용
+export MEMENTO_CLI_REMOTE=https://memento.anchormind.net/mcp
+export MEMENTO_CLI_KEY=mmcp_xxx
+node bin/memento.js recall "배포 기록"
+node bin/memento.js stats
+node bin/memento.js remember "배포 완료" --topic deploy --type procedure
+```
+
+`serve`, `migrate`, `cleanup`, `backfill`, `health`, `update` 명령에서 `--remote`를 사용하면 에러가 반환된다.
+
+---
+
+## 출력 포맷 상세
+
+| 포맷 | 특징 | 권장 상황 |
+|------|------|-----------|
+| `table` | 사람이 읽기 쉬운 정렬 표 | TTY 터미널 직접 확인 |
+| `json` | 기계 판독 가능한 JSON | 파이프 처리, 스크립트 |
+| `csv` | 쉼표 구분 값 | 스프레드시트, awk 처리 |
+
+TTY 감지: 파이프나 리다이렉트 환경(`| jq`, `> out.txt`)에서는 `--format`을 명시하지 않아도 자동으로 `json`을 선택한다.
+
+`recall --format csv` 출력 예시:
+
+```
+id,type,topic,importance,content
+frag-00abc123,fact,infra,0.80,"PostgreSQL 연결 시 pg_hba.conf 설정 필요"
+frag-00def456,procedure,deploy-2026,0.70,"배포 완료"
 ```
 
 ---

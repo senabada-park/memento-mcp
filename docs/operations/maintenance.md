@@ -2,8 +2,99 @@
 
 작성자: 최진호
 작성일: 2026-04-19
+수정일: 2026-04-20 (v2.12.0 migration-036 체크리스트, X-RateLimit 모니터링, scripts 테이블 추가)
 
 운영 중 필요에 따라 실행하는 유지보수 스크립트 목록이다. 각 스크립트의 목적, 선행 조건, 실행 명령, 권장 빈도를 기술한다.
+
+---
+
+## migration-036 적용 체크리스트 (v2.12.0)
+
+migration-036은 `fragments.idempotency_key` 컬럼과 테넌트별 partial unique index 2개를 추가한다.
+
+### 기본: 자동 실행
+
+`npm run migrate`가 `migration-036-fragment-idempotency.sql`을 번호 순으로 자동 탐지하여 실행한다. `agent_memory.schema_migrations`에 적용 이력이 기록된다.
+
+```bash
+DATABASE_URL=postgresql://... npm run migrate
+```
+
+### 대규모 운영 테이블: 수동 CONCURRENTLY 실행
+
+수백만 건 이상의 파편이 있는 운영 DB에서는 `CREATE INDEX`가 테이블 잠금을 발생시킬 수 있다. 이 경우 `npm run migrate` 실행 전에 아래 두 문을 직접 실행한다. IF NOT EXISTS 가드로 인해 자동 실행 시 SKIP된다.
+
+```sql
+-- psql 접속 후 (DATABASE_URL 환경에서 직접 실행)
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_fragments_idempotency_tenant
+  ON agent_memory.fragments (key_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL AND key_id IS NOT NULL;
+
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_fragments_idempotency_master
+  ON agent_memory.fragments (idempotency_key)
+  WHERE idempotency_key IS NOT NULL AND key_id IS NULL;
+```
+
+CONCURRENTLY 실행은 트랜잭션 외부에서 이루어지므로 반드시 BEGIN/COMMIT 없이 단독 실행한다.
+
+### 인덱스 검증
+
+적용 후 psql에서 확인:
+
+```sql
+\d agent_memory.fragments
+```
+
+출력에 `idx_fragments_idempotency_tenant`와 `idx_fragments_idempotency_master` 두 인덱스가 모두 표시되어야 한다.
+
+---
+
+## X-RateLimit-* 모니터링
+
+v2.12.0(M3)부터 HTTP 응답에 `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` 헤더가 포함된다.
+
+### 구현 특성
+
+- `QuotaChecker.getUsage()`: 모듈 레벨 Map 캐시, TTL 10초, 상한 1000 파편/창
+- in-memory 캐시이므로 서버 재시작 시 초기화된다. 다중 인스턴스 배포에서는 인스턴스별로 독립 집계된다.
+
+### nginx access log 기반 수집
+
+nginx access_log 포맷에 헤더를 추가하면 Prometheus `nginx-exporter` 또는 Vector/Fluent Bit 파이프라인으로 수집할 수 있다.
+
+```nginx
+log_format memento_main '$remote_addr - $upstream_http_x_ratelimit_remaining '
+                        '[$time_local] "$request" $status';
+```
+
+### Prometheus/Grafana 연동
+
+서버의 `/metrics` 엔드포인트(인증 필요)에서 아래 메트릭으로 rate limit 상태를 확인할 수 있다.
+
+```
+memento_quota_used_total   — 창 내 사용된 파편 수 (레이블: key_id)
+memento_quota_limit        — 설정된 상한 (레이블: key_id)
+```
+
+Grafana 알림 권장 임계값: `memento_quota_used_total / memento_quota_limit > 0.8` 시 경고.
+
+---
+
+## 스크립트 목록 및 호출 조건
+
+| 스크립트 | 목적 | 호출 조건 | 빈도 |
+|-|-|-|-|
+| `scripts/migrate.js` | DB 마이그레이션 자동 실행 | 서버 업그레이드, 신규 설치 | 버전 업그레이드 시 1회 |
+| `scripts/backfill-embeddings.js` | embedding IS NULL 파편에 임베딩 일괄 생성 | EMBEDDING_PROVIDER 변경 후, 임베딩 API 장애 복구 후 | 조건부 1회 |
+| `scripts/check-embedding-consistency.js` | 설정 차원과 DB 실제 벡터 차원 일치 검증 | 서버 기동 시 자동 실행 (server.js 내부 호출) | 기동마다 자동 |
+| `scripts/normalize-vectors.js` | 기존 임베딩 벡터 L2 정규화 | 임베딩 제공자 전환 직후 1회 | 조건부 1회 |
+| `scripts/cleanup-noise.js` | 초단문·빈 세션 요약·NLI 재귀 쓰레기 파편 탐지·삭제 | recall 품질 저하 또는 context 토큰 예산 오염 시 | 조건부, 필요 시 월 1회 |
+| `scripts/post-migrate-flexible-embedding-dims.js` | fragments + morpheme_dict 임베딩 컬럼 차원 동시 조정 | EMBEDDING_DIMENSIONS 변경 또는 provider 전환 시 | 조건부 1회 |
+| `scripts/backfill-claims.js` | v2.7.0 이전 코퍼스에 ClaimExtractor 소급 실행 | Phase 1 Shadow(MEMENTO_SYMBOLIC_SHADOW=true) 활성화 전 | 일회성 |
+| `scripts/benchmark-hot-path.js` | remember/recall/link/reflect 4개 hot path p50/p95/p99 측정 | Symbolic Memory feature flag 전환 전후 회귀 기준선 확보 | 조건부 |
+| `scripts/run-e2e-tests.sh` | Docker 기반 E2E 테스트 실행 | CI/CD 파이프라인 또는 대규모 리팩터링 후 회귀 검증 | CI마다 또는 릴리즈 전 |
+| `scripts/smoke-test-symbolic.sh` | v2.8.0 Symbolic Memory end-to-end smoke 검증 | MEMENTO_SYMBOLIC_* 플래그 전환 후 | 조건부 |
+| `scripts/test-llm-callers.mjs` | AutoReflect/ConsolidatorGC/ContradictionDetector/MemoryEvaluator LLM 스키마 E2E 검증 | LLM provider 교체 또는 프롬프트 수정 후 | 조건부 |
 
 ---
 

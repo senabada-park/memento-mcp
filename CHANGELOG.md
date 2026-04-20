@@ -1,5 +1,49 @@
 # Changelog
 
+## [2.12.0] - 2026-04-20
+
+### Added
+
+- M1 원격 CLI: `lib/cli/_mcpClient.js` 신설. `--remote URL` / `--key KEY` 전역 플래그 및 `MEMENTO_CLI_REMOTE` / `MEMENTO_CLI_KEY` 환경변수 fallback. initialize → tools/call 2단계 세션을 생성하고 재사용한다. local-only 명령(migrate, admin 등)을 원격 모드에서 호출하면 에러를 반환한다.
+- M3 X-RateLimit HTTP 헤더: 모든 API 응답에 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Resource` 헤더 포함. `QuotaChecker.getUsage` + 모듈 레벨 Map 캐시(TTL 10초, 상한 1000 엔트리). master key 또는 limit=null이면 헤더 생략.
+- M5 dryRun 파라미터: remember / link / forget / amend 4개 MCP 도구에 `dryRun: boolean` 파라미터 추가. 기본값 false. true 시 `simulated: true` 응답 반환 + 모든 side-effect 스킵.
+
+## [2.11.0] - 2026-04-20
+
+### Added
+
+- H1 _meta 래퍼: recall / context 응답에 `_meta: { searchEventId, hints, suggestion }` 필드 추가. 기존 top-level 필드는 v2.12.x 마지막 릴리즈까지 동일 값으로 mirror 제공된다.
+- H2 sparse fields: recall 파라미터에 `fields: string[]` 추가. 17개 화이트리스트(id / content / type / topic / keywords / importance / created_at / access_count / confidence / linked / explanations / workspace / context_summary / case_id / valid_to / affect / ema_activation). L1/L2/RRF 단계는 전체 필드 유지 후 응답 직전에 필터링.
+- H3 CLI 서브명령별 `--help` / `-h`: 11개 모듈의 `usage` export 추가.
+- H4 CLI `--format table|json|csv`: TTY 환경 자동 감지. `--json`은 `--format json` 별칭. `lib/cli/_format.js` 신설.
+- H5 idempotencyKey: remember / batchRemember 스키마에 `idempotencyKey` 파라미터 추가(maxLength 128). 같은 key_id 범위 내 partial UNIQUE 보장. `FragmentReader.findByIdempotencyKey` 신설. migration-036(tenant partial index + master partial index 2개).
+
+### Deprecated
+
+- recall / context 응답의 top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드: v2.12.x 마지막 릴리즈를 끝으로 v2.13.0에서 제거된다. `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`으로 전환할 것.
+
+## [2.10.1] - 2026-04-20
+
+### Fixed
+
+- R12 TDZ 핫픽스: `remember()` 내부의 atomic 분기(`MEMENTO_REMEMBER_ATOMIC=true && keyId != null` 경로)가 `const fragment` 선언 이전에 위치하여 ReferenceError가 발생했다. atomic 분기를 fragment 생성 이후로 이동하고, `quotaChecker.check`를 `!(atomicRemember && keyId)` 가드로 조건부 호출하도록 수정했다. 원격 `memento.anchormind.net` 서버에서 동일 증상이 발생하던 문제도 함께 해소된다.
+
+### Added
+
+- 회귀 방지 단위 테스트 `tests/unit/memory-manager-remember-tdz.test.js`: atomic 분기의 TDZ 경로를 직접 재현하는 테스트 추가.
+
+## [2.10.0] - 2026-04-20
+
+### Changed
+
+- MemoryManager 1252줄 → 259줄 facade로 축소. 비즈니스 로직을 `lib/memory/processors/` 4개 클래스로 분리했다: MemoryRememberer(remember/batchRemember), MemoryRecaller(recall/context), MemoryReflector(reflect), MemoryLinker(link/graph_explore).
+- facade ↔ 프로세서 간 공유 프로퍼티 setter를 `_installSharedSync` 패턴으로 동기화한다. 외부에서 `memoryManager.embedder = x`처럼 세터를 호출하면 모든 프로세서에 자동 전파된다.
+
+### Tests
+
+- `tests/unit/memory-manager-di.test.js`: DI 경로를 `MemoryManager.prototype.remember.toString()` → `MemoryRememberer.prototype.remember.toString()`으로 전환.
+- `tests/unit/remember-processor.test.js`: MemoryRememberer 직접 DI 경로로 전환.
+
 ## [Unreleased] - 2026-04-19
 
 ### Changed

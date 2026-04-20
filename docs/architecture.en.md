@@ -23,7 +23,12 @@ server.js  (HTTP server)
     +-- lib/tool-registry.js  18 memory tool registration and routing
     |
     +-- lib/memory/
-            +-- MemoryManager.js          Business logic orchestration layer (904 lines, singleton). Entry point for remember/recall/forget/amend. Actual logic delegated to Processor/Builder below
+            +-- MemoryManager.js          Business logic orchestration facade (259 lines, singleton). Routes 15 public methods to 4 processors via 1-line delegation. Shared properties synchronized via _installSharedSync
+            +-- processors/
+            |   +-- MemoryRememberer.js   Dedicated remember() (~695 lines). Includes R12 TDZ hotfix: atomic branch relocated after fragment creation
+            |   +-- MemoryRecaller.js     Dedicated recall() (~405 lines). fields pick step, depth filter, CBR path
+            |   +-- MemoryReflector.js    Dedicated reflect() (~89 lines). session summary->fragment conversion
+            |   +-- MemoryLinker.js       Dedicated link()/forget()/amend() (~80 lines)
             +-- ContextBuilder.js         Dedicated context() logic. Assembles Core/Working/Anchor Memory composite context
             +-- ReflectProcessor.js       Dedicated reflect() logic. summary->fragment conversion, episode creation, Working Memory cleanup
             +-- BatchRememberProcessor.js Dedicated batchRemember() logic. Phase A (validation) -> B (INSERT) -> C (post-processing) 3-stage
@@ -100,6 +105,7 @@ server.js  (HTTP server)
             +-- migration-033-symbolic-hard-gate.sql     api_keys.symbolic_hard_gate BOOLEAN DEFAULT false (v2.8.0)
             +-- migration-034-api-keys-default-mode.sql  api_keys.default_mode TEXT NULL -- per-key Mode preset default (v2.9.0)
             +-- migration-035-fragments-affect.sql       fragments.affect TEXT DEFAULT 'neutral' CHECK 6-enum constraint (v2.9.0)
+            +-- migration-036-idempotency-key.sql        fragments.idempotency_key TEXT NULL + 2 partial UNIQUE indexes: (key_id, idempotency_key) WHERE idempotency_key IS NOT NULL AND key_id IS NOT NULL / (idempotency_key) WHERE idempotency_key IS NOT NULL AND key_id IS NULL (v2.11.0)
 ```
 
 Supporting modules:
@@ -199,6 +205,78 @@ scripts/
 ```
 
 `config/memory.js` is a separate configuration file for the memory system. It holds time-semantic composite ranking weights, stale thresholds, embedding worker settings, context injection, pagination, and GC policies. `config/validate-memory-config.js` is called once at server startup to runtime-validate MEMORY_CONFIG weight sums, ranges, and type constraints. The process is halted on failure.
+
+---
+
+## MemoryManager Facade Decomposition (v2.10.0)
+
+In v2.10.0, MemoryManager was reduced from 1,252 lines to a 259-line thin facade. Business logic was extracted into 4 processors under `lib/memory/processors/`.
+
+```
+MemoryManager (259 lines, facade)
+  +-- MemoryRememberer  (~695 lines) -- remember(), batchRemember()
+  +-- MemoryRecaller    (~405 lines) -- recall(), context()
+  +-- MemoryReflector   ( ~89 lines) -- reflect()
+  +-- MemoryLinker      ( ~80 lines) -- link(), forget(), amend()
+```
+
+Dependency direction: processors -> shared modules (FragmentStore, FragmentSearch, etc.) / external callers -> facade -> processors.
+
+### _installSharedSync Design
+
+The facade constructor initializes 20 shared objects (store, index, factory, search, quotaChecker, etc.) then DI-injects them into 4 processors. It then calls `_installSharedSync()` to wrap each shared property setter in the facade with `Object.defineProperty`.
+
+```js
+// Conceptual code
+Object.defineProperty(this, 'store', {
+  set(v) { this._store = v; for (const p of this._processors) p.store = v; }
+});
+```
+
+A single `mm.store = stubStore` test mock replacement propagates automatically to the facade and all processors. Test isolation and production DI both use the same code path.
+
+---
+
+## Idempotency (v2.11.0, migration-036)
+
+A `idempotency_key TEXT NULL` column was added to the `fragments` table with 2 partial UNIQUE indexes.
+
+| Index | Condition | Purpose |
+|-------|-----------|---------|
+| `uq_frag_idem_tenant` | `idempotency_key IS NOT NULL AND key_id IS NOT NULL` | Uniqueness within API key tenant |
+| `uq_frag_idem_master` | `idempotency_key IS NOT NULL AND key_id IS NULL` | Uniqueness within master tenant |
+
+When `remember()` is called with `params.idempotencyKey`, `FragmentReader.findByIdempotencyKey(key, keyId)` looks up the existing fragment. If found, the existing id is returned without creating a new fragment, and `idempotent: true` is included in the response. If not found, the fragment is stored normally and the `idempotency_key` column is recorded.
+
+---
+
+## Rate Limit Headers (v2.12.0)
+
+`QuotaChecker.getUsage(keyId)` queries the fragment usage count per API key. Results are cached in a module-level in-memory Map with 10-second TTL to block repeated DB queries (upper limit: 1,000 entries).
+
+HTTP response header injection point: immediately before the `sendJSON` call in `lib/handlers/mcp-handler.js`, `QuotaChecker.getUsage()` is read and the following 3 headers are set.
+
+```
+X-RateLimit-Limit:     <fragment_limit>
+X-RateLimit-Remaining: <fragment_limit - used>
+X-RateLimit-Resource:  fragments
+```
+
+Headers are omitted when `keyId === null` (master) or `limit === null` (unlimited key).
+
+---
+
+## Remote CLI (v2.12.0, M1)
+
+`lib/cli/_mcpClient.js` allows CLI subcommands (`recall`, `remember`, `inspect`, etc.) to connect to a remote MCP endpoint without a local server.
+
+Connection flow:
+1. Send `initialize` request -> receive `Mcp-Session-Id` header (session creation)
+2. Reuse the same `Mcp-Session-Id` for all subsequent `tools/call` requests (session reuse)
+
+Authentication: `Authorization: Bearer <KEY>` header.
+
+Global CLI flags: `--remote <URL>`, `--key <KEY>`. Local-only commands (serve, migrate, cleanup, backfill, health, update) do not support remote routing.
 
 ---
 

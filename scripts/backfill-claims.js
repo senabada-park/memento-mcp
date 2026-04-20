@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 /**
- * 기존 파편에 ClaimExtractor를 소급 실행하여 fragment_claims 테이블을 채운다.
+ * backfill-claims.js — 기존 파편에 ClaimExtractor 소급 실행
  *
- * 용도: v2.8.0 Symbolic Memory Phase 1 Shadow 진입 전, v2.7.0 이전 코퍼스의 claim을
- *       일괄 생성할 때 사용한다. 실행 이후 신규 파편은 RememberPostProcessor 8단계 hook에서
- *       실시간 추출되므로 이 스크립트는 기존 코퍼스 단독 적용이다.
- * 전제: DATABASE_URL 필수. ClaimExtractor가 의존하는 임베딩 API(OPENAI_API_KEY 등)
- *       또는 로컬 transformers provider가 설정되어 있어야 한다.
- *       실행 전 반드시 --dry-run으로 추출 볼륨과 tenant_violations 수치를 확인한다.
- * 호출: DATABASE_URL=postgresql://... node scripts/backfill-claims.js [옵션]
- *       옵션: --batch-size N, --rate-limit-ms N, --tenant-key KEY, --limit N,
- *             --min-confidence 0..1, --dry-run, --verbose
- * 빈도: 일회성 (Phase 1 Shadow 활성화 전 1회, 이후 신규 파편은 실시간 처리)
+ * 작성자: 최진호
+ * 수정일: 2026-04-20 (v2.12.0 문서 현행화 반영)
+ *
+ * 목적: v2.7.0 이전 코퍼스에 ClaimExtractor를 소급 실행하여 fragment_claims 테이블을 채운다.
+ *       실행 이후 신규 파편은 RememberPostProcessor 8단계 hook에서 실시간 추출되므로
+ *       이 스크립트는 기존 코퍼스 전용이다.
+ * 호출 조건: Phase 1 Shadow(MEMENTO_SYMBOLIC_SHADOW=true) 활성화 전 1회
+ * 빈도: 일회성
+ * 의존: DATABASE_URL, OPENAI_API_KEY(또는 로컬 transformers provider)
+ * 관련 문서: docs/operations/backfill-claims.md, docs/operations/maintenance.md
+ *
+ * 옵션: --batch-size N, --rate-limit-ms N, --tenant-key KEY, --limit N,
+ *       --min-confidence 0..1, --dry-run, --verbose
+ * 전제: 실행 전 반드시 --dry-run으로 추출 볼륨과 tenant_violations 수치를 확인한다.
  *
  * 작성자: 최진호
  * 수정일: 2026-04-19

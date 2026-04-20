@@ -23,7 +23,12 @@ server.js  (HTTP 서버)
     ├── lib/tool-registry.js  18개 기억 도구 등록 및 라우팅
     │
     └── lib/memory/
-            ├── MemoryManager.js          비즈니스 로직 조율 계층 (904줄, 싱글턴). remember/recall/forget/amend 진입점. 실제 로직은 아래 Processor/Builder로 위임
+            ├── MemoryManager.js          비즈니스 로직 조율 facade (259줄, 싱글턴). 15개 공개 메서드를 1줄 위임으로 4개 processor에 라우팅. 공유 프로퍼티는 _installSharedSync로 동기화
+            ├── processors/
+            │   ├── MemoryRememberer.js   remember() 전담 (~695줄). R12 TDZ 핫픽스 포함: fragment 생성 후 atomic 분기
+            │   ├── MemoryRecaller.js     recall() 전담 (~405줄). fields pick 단계, depth 필터, CBR 경로
+            │   ├── MemoryReflector.js    reflect() 전담 (~89줄). session 요약→파편 변환
+            │   └── MemoryLinker.js       link()/forget()/amend() 전담 (~80줄)
             ├── ContextBuilder.js         context() 로직 전담. Core/Working/Anchor Memory 조합 컨텍스트 생성
             ├── ReflectProcessor.js       reflect() 로직 전담. summary→파편 변환, episode 생성, Working Memory 정리
             ├── BatchRememberProcessor.js batchRemember() 로직 전담. Phase A(검증)→B(INSERT)→C(후처리) 3단계
@@ -102,7 +107,8 @@ server.js  (HTTP 서버)
             ├── migration-032-fragment-claims.sql        Symbolic Memory Layer — fragment_claims 테이블 (v2.8.0)
             ├── migration-033-symbolic-hard-gate.sql     api_keys.symbolic_hard_gate BOOLEAN DEFAULT false (v2.8.0)
             ├── migration-034-api-keys-default-mode.sql  api_keys.default_mode TEXT NULL — Mode preset 키 단위 기본값 (v2.9.0)
-            └── migration-035-fragments-affect.sql       fragments.affect TEXT DEFAULT 'neutral' CHECK 제약 6 enum (v2.9.0)
+            ├── migration-035-fragments-affect.sql       fragments.affect TEXT DEFAULT 'neutral' CHECK 제약 6 enum (v2.9.0)
+            └── migration-036-idempotency-key.sql        fragments.idempotency_key TEXT NULL + partial UNIQUE 2종: (key_id, idempotency_key) WHERE idempotency_key IS NOT NULL AND key_id IS NOT NULL / (idempotency_key) WHERE idempotency_key IS NOT NULL AND key_id IS NULL (v2.11.0)
 ```
 
 지원 모듈:
@@ -202,6 +208,78 @@ scripts/
 ```
 
 `config/memory.js`는 별도 파일로 분리된 기억 시스템 설정이다. 시간-의미 복합 랭킹 가중치, stale 임계값, 임베딩 워커, 컨텍스트 주입, 페이지네이션, GC 정책을 담는다. `config/validate-memory-config.js`는 서버 시작 시 1회 호출되어 MEMORY_CONFIG의 가중치 합계, 범위, 타입 제약을 런타임 검증한다. 실패 시 프로세스 시작을 중단한다.
+
+---
+
+## MemoryManager Facade 분해 (v2.10.0)
+
+v2.10.0에서 MemoryManager는 1252줄에서 259줄의 thin facade로 축소되었다. 비즈니스 로직은 `lib/memory/processors/` 하위 4개 processor로 분리되었다.
+
+```
+MemoryManager (259줄, facade)
+  ├── MemoryRememberer  (~695줄) — remember(), batchRemember()
+  ├── MemoryRecaller    (~405줄) — recall(), context()
+  ├── MemoryReflector   ( ~89줄) — reflect()
+  └── MemoryLinker      ( ~80줄) — link(), forget(), amend()
+```
+
+의존 방향: processors → 공용 모듈 (FragmentStore, FragmentSearch 등) / 외부 호출자 → facade → processors.
+
+### _installSharedSync 설계
+
+facade 생성자는 20개 공유 객체(store, index, factory, search, quotaChecker 등)를 초기화한 뒤 4개 processor에 DI 주입한다. 이후 `_installSharedSync()`를 호출하여 facade의 각 공유 프로퍼티 setter를 `Object.defineProperty`로 래핑한다.
+
+```js
+// 개념 코드
+Object.defineProperty(this, 'store', {
+  set(v) { this._store = v; for (const p of this._processors) p.store = v; }
+});
+```
+
+`mm.store = stubStore` 형태의 테스트 mock 교체 한 줄이 facade와 모든 processor에 자동 전파된다. 테스트 격리와 프로덕션 DI 모두 동일 코드 경로로 처리된다.
+
+---
+
+## Idempotency (v2.11.0, migration-036)
+
+`fragments` 테이블에 `idempotency_key TEXT NULL` 컬럼이 추가되고 partial UNIQUE 인덱스 2종이 생성되었다.
+
+| 인덱스 | 조건 | 목적 |
+|--------|------|------|
+| `uq_frag_idem_tenant` | `idempotency_key IS NOT NULL AND key_id IS NOT NULL` | API key 테넌트 내 유일성 |
+| `uq_frag_idem_master` | `idempotency_key IS NOT NULL AND key_id IS NULL` | master 테넌트 내 유일성 |
+
+`remember()` 호출 시 `params.idempotencyKey`가 있으면 `FragmentReader.findByIdempotencyKey(key, keyId)`로 기존 파편을 조회한다. 파편이 존재하면 새로 생성하지 않고 기존 id를 반환하며 `idempotent: true` 필드를 포함한다. 파편이 없으면 정상 저장 후 `idempotency_key` 컬럼에 기록한다.
+
+---
+
+## Rate Limit 헤더 (v2.12.0)
+
+`QuotaChecker.getUsage(keyId)`는 API 키별 파편 사용량을 조회한다. 응답 결과는 모듈 레벨 인메모리 Map에 10초 TTL로 캐싱되어 반복 DB 조회를 차단한다 (상한 1000 항목).
+
+HTTP 응답 헤더 주입 지점: `lib/handlers/mcp-handler.js`의 `sendJSON` 호출 직전에 `QuotaChecker.getUsage()` 결과를 읽어 아래 3개 헤더를 설정한다.
+
+```
+X-RateLimit-Limit:     <fragment_limit>
+X-RateLimit-Remaining: <fragment_limit - used>
+X-RateLimit-Resource:  fragments
+```
+
+`keyId === null` (master) 또는 `limit === null` (무제한 키)이면 헤더를 생략한다.
+
+---
+
+## 원격 CLI (v2.12.0, M1)
+
+`lib/cli/_mcpClient.js`는 CLI 서브명령(`recall`, `remember`, `inspect` 등)이 로컬 서버 없이 원격 MCP 엔드포인트에 접속할 수 있도록 한다.
+
+접속 흐름:
+1. `initialize` 요청 전송 → `Mcp-Session-Id` 헤더 수신 (세션 생성)
+2. 이후 모든 `tools/call` 요청에 동일 `Mcp-Session-Id` 재사용 (세션 재사용)
+
+인증: `Authorization: Bearer <KEY>` 헤더 사용.
+
+CLI 전역 플래그: `--remote <URL>`, `--key <KEY>`. Local-only 명령(serve, migrate, cleanup, backfill, health, update)은 원격 경유를 지원하지 않는다.
 
 ---
 

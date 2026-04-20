@@ -2,9 +2,18 @@
 
 ## MemoryManager (조율 계층)
 
-v2.5.2에서 MemoryManager는 1790줄에서 904줄로 경량화되었고, v2.6.0 기준 1,051줄로 CBR/depth 필터가 추가되어, 도구 핸들러와 하위 모듈 간의 조율(orchestration) 계층으로 기능한다. 각 연산의 핵심 로직은 전담 모듈로 위임되며, MemoryManager는 의존성 주입과 메서드 라우팅만 담당한다.
+v2.5.2에서 MemoryManager는 1790줄에서 904줄로 경량화되었고, v2.10.0(Phase 5-B)에서 259줄의 thin facade로 최종 분해되었다. 비즈니스 로직은 `lib/memory/processors/` 하위 4개 프로세서로 위임된다.
 
-**분해된 모듈:**
+**v2.10.0 분해 결과:**
+
+| 프로세서 | 위임 대상 | 줄 수 |
+|----------|----------|-------|
+| `MemoryRememberer` | `remember()`, `batchRemember()` | ~695 |
+| `MemoryRecaller` | `recall()`, `context()` | ~405 |
+| `MemoryReflector` | `reflect()` | ~89 |
+| `MemoryLinker` | `link()`, `forget()`, `amend()` | ~80 |
+
+**기존 분해 모듈 (facade 외부 독립):**
 
 | 모듈 | 위임 대상 | 역할 |
 |------|----------|------|
@@ -14,9 +23,55 @@ v2.5.2에서 MemoryManager는 1790줄에서 904줄로 경량화되었고, v2.6.0
 | `QuotaChecker` | `remember()` 진입 시 | API 키별 파편 할당량(fragment_limit) 검사 |
 | `RememberPostProcessor` | `remember()` 완료 후 | 임베딩 생성, 형태소 인덱싱, 자동 링크, assertion 검사, 시간 링크, 평가 큐 투입, ProactiveRecall 파이프라인. ProactiveRecall 로직 포함 -- remember() 시 키워드 오버랩(>=50%) 기반 유사 파편 자동 `related_to` 링크 생성 |
 
+**facade 생성자 흐름:** 20개 공유 객체 초기화 → 4 프로세서 DI 주입 → `_installSharedSync()` 호출. 15개 공개 메서드는 1줄 위임으로 구현된다.
+
+**_installSharedSync:** facade의 각 공유 프로퍼티(store, index, factory 등) setter를 `Object.defineProperty`로 래핑한다. `mm.store = stub` 한 줄이 facade와 모든 프로세서에 자동 전파된다 (테스트 DI 호환).
+
 **위임 패턴:** 각 모듈은 생성자에서 필요한 의존성(store, index, factory, 바인딩된 메서드 등)을 주입받는다. MemoryManager 생성자에서 `this.recall.bind(this)`, `this.remember.bind(this)` 형태로 자기 참조 메서드를 바인딩하여 전달하므로, 모듈이 MemoryManager를 역참조하지 않는다.
 
 **reflect의 resolution_status 자동 세팅:** ReflectProcessor는 reflect 생성 파편에 resolution_status를 자동 부여한다. `errors_resolved` 항목은 `resolutionStatus: "resolved"`로, `open_questions` 항목은 `resolutionStatus: "open"`으로 설정된다. 또한 모든 reflect 생성 파편에 `sessionId`가 전파되어 세션 단위 추적이 가능하다.
+
+**remember() 본문 구조 (v2.11.0 기준):**
+
+```
+remember(params)
+  ├── [NEW v2.11.0] dryRun 분기 — atomic 가드 선언 직전 early return
+  │     params.dryRun === true → validationResult 계산 후 실제 저장 없이
+  │     { dryRun: true, wouldStore: true/false, reason, params } 반환
+  ├── atomic 가드 — atomicRemember && keyId 조건
+  ├── QuotaChecker.check() — !(atomicRemember && keyId) 조건부
+  ├── [NEW v2.11.0] idempotency 분기 — params.idempotencyKey 존재 시
+  │     FragmentReader.findByIdempotencyKey(key, keyId) 조회
+  │     기존 파편 발견 시 → { id, idempotent: true } 조기 반환
+  ├── FragmentWriter.insert() — 실제 파편 저장
+  │     idempotency_key 컬럼에 params.idempotencyKey 저장 (NULL 가능)
+  └── RememberPostProcessor.run() — 임베딩/형태소/링크/평가 후처리
+```
+
+`dryRun` 분기는 atomic 가드 선언 직전(변수 `fragment` TDZ 이전)에 위치한다. R12 핫픽스(v2.10.1)에서 atomic 분기를 fragment 선언 이후로 재배치하면서 TDZ가 해소되었고, v2.11.0 dryRun 분기도 그 이후 위치를 따른다.
+
+**recall() 파이프라인 단계별 fields pick 위치:**
+
+```
+recall(query)
+  ├── L1 Redis 인메모리 캐시 (warm path)
+  ├── L2 pgvector 임베딩 유사도
+  ├── L2.5 그래프 이웃 (fragment_links 1-hop)
+  ├── L3 PostgreSQL 전문 검색 (형태소)
+  ├── L4 Cross-Encoder Reranker (RRF 상위 30건)
+  ├── RRF 병합 (k=60)
+  ├── 토큰 예산 절단 (tokenBudget)
+  ├── valid_to 필터
+  ├── Phase 2 explanations (ExplanationBuilder.annotate)
+  ├── Phase 5 CBR filter (cbrEligibility.filter, sq.caseId 있을 때)
+  ├── trimmed.map(({ _rrfScore, ...rest }) => rest)  — 내부 점수 제거
+  ├── [NEW v2.11.0] pickFields(query.fields)  — sparse fieldset 적용
+  │     query.fields 미지정 시 전체 반환 (하위 호환)
+  │     L1/L2/RRF 캐시 단계는 전체 필드 유지, 최종 반환 직전에만 pick
+  └── SearchEventRecorder.record() — 이벤트 기록
+```
+
+`pickFields`는 17개 화이트리스트(`id, content, type, importance, topic, ...`) 외 필드를 제거한다. 캐시 단계(L1 warm hit, RRF 병합 중간 객체)에는 적용하지 않아 캐시 효율을 보존한다.
 
 ---
 

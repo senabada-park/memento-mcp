@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
- * AutoReflect, ConsolidatorGC, ContradictionDetector, MemoryEvaluator 4개 LLM caller가
- * 외부 LLM으로부터 올바른 JSON 구조를 응답받는지 E2E 검증한다.
+ * test-llm-callers.mjs — LLM caller JSON 스키마 E2E 검증
  *
- * 용도: LLM provider 변경 또는 프롬프트 수정 후, 각 caller의 JSON 스키마 준수 여부를
- *       실제 외부 LLM 호출로 확인할 때 사용한다.
- * 전제: LLM_PRIMARY, LLM_FALLBACKS, POSTGRES_*, REDIS_*, OPENAI_API_KEY, LOG_DIR 환경변수
- *       필수. 외부 LLM 엔드포인트(Gemini CLI, Ollama Cloud 등)가 접근 가능한 상태여야 한다.
- * 호출: node scripts/test-llm-callers.mjs
- *       (Ollama Cloud fallback 강제 시: PATH="/usr/bin:/bin" node scripts/test-llm-callers.mjs)
- * 빈도: 조건부 (LLM provider 교체 또는 프롬프트 수정 후 회귀 확인 목적)
+ * 작성자: 최진호
+ * 수정일: 2026-04-20 (v2.12.0 문서 현행화 반영)
+ *
+ * 목적: AutoReflect, ConsolidatorGC, ContradictionDetector, MemoryEvaluator 4개 LLM caller가
+ *       외부 LLM으로부터 올바른 JSON 구조를 응답받는지 E2E 검증한다.
+ * 호출 조건: LLM provider 변경 또는 caller 프롬프트 수정 후 회귀 확인
+ * 빈도: 조건부
+ * 의존: LLM_PRIMARY, LLM_FALLBACKS, POSTGRES_*, REDIS_*, OPENAI_API_KEY, LOG_DIR
+ *       외부 LLM 엔드포인트(Gemini CLI, Ollama Cloud 등) 네트워크 접근 가능
+ * 관련 문서: docs/operations/llm-providers.md, docs/operations/maintenance.md
  *
  * 검증 케이스 5종:
  *   1. AutoReflect — _buildReflectPrompts + llmJson, 5개 필수 키 확인
@@ -18,8 +20,7 @@
  *   4. ContradictionDetector.askGeminiContradiction — { contradicts: boolean, reasoning: string }
  *   5. MemoryEvaluator — { score: number, rationale: string, action: keep|downgrade|discard }
  *
- * 작성자: 최진호
- * 수정일: 2026-04-19
+ * 종료 코드: 전체 통과 0, 하나 이상 실패 1. stdout에 PASS N/5  FAIL M/5 요약 출력.
  */
 
 import { createRequire } from "module";

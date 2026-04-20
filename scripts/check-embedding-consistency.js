@@ -1,13 +1,16 @@
 /**
- * check-embedding-consistency.js
+ * check-embedding-consistency.js — 임베딩 차원 일관성 startup 검증
  *
  * 작성자: 최진호
  * 작성일: 2026-04-18
+ * 수정일: 2026-04-20 (v2.12.0 문서 현행화 반영)
  *
- * 임베딩 차원 일관성 startup 검증.
- *
- * EMBEDDING_DIMENSIONS 설정값과 DB의 실제 벡터 차원이 일치하는지 확인한다.
- * 불일치 시 server.js 기동 전에 명확한 가이드를 출력하고 false를 반환한다.
+ * 목적: EMBEDDING_DIMENSIONS 설정값과 DB의 실제 벡터 차원이 일치하는지 확인한다.
+ *       불일치 시 server.js 기동 전에 명확한 가이드를 출력하고 false를 반환한다.
+ * 호출 조건: server.js 기동 시 자동 호출. setup.sh의 검증 단계에서도 직접 호출 가능.
+ * 빈도: 서버 기동마다 자동 실행
+ * 의존: DATABASE_URL, EMBEDDING_DIMENSIONS, EMBEDDING_PROVIDER
+ * 관련 문서: docs/INSTALL.md#기동-후-검증-체크리스트, docs/operations/maintenance.md
  */
 
 import { getPrimaryPool }                                     from "../lib/tools/db.js";

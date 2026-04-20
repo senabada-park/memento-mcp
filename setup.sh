@@ -363,11 +363,17 @@ if ask_yn "Apply PostgreSQL schema?" "y"; then
     success "Schema applied."
   else
     info "Running migrations..."
+    # migration-*.sql 파일을 번호 순으로 자동 탐지하여 실행한다.
+    # migration-036-fragment-idempotency.sql 포함, IF NOT EXISTS 가드로 멱등 실행 가능.
+    # 수백만 건 이상의 대규모 운영 DB에서는 migration-036의 CREATE UNIQUE INDEX가
+    # 테이블 잠금을 발생시킬 수 있다. 이 경우 실행 전에 docs/INSTALL.md의
+    # "migration-036 CONCURRENTLY 옵션" 섹션을 참조하여 수동 실행을 먼저 완료한다.
     for f in lib/memory/migration-*.sql; do
       if [[ -f "$f" ]]; then
         psql "$DATABASE_URL" -f "$f" && success "$(basename "$f") done." || warn "$(basename "$f") failed (may already be applied)."
       fi
     done
+    # 마이그레이션 완료 후 서버 재시작이 필요하다 (새 컬럼/인덱스 반영).
   fi
 
   if [[ -n "$EMBEDDING_PROVIDER" ]]; then

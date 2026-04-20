@@ -158,6 +158,66 @@ Claude.ai Web / ChatGPT 연동은 OAuth를 사용한다. 발급한 API 키(`mmcp
 | OAuth 연동 | RFC 7591 Dynamic Client Registration, Claude.ai / ChatGPT Web 통합 지원 |
 | **Workspace 격리** | 같은 키 내에서도 프로젝트·직종·클라이언트 단위로 기억을 분리. `api_keys.default_workspace`로 자동 태깅, 검색 시 자동 필터. |
 
+### v2.12.0 신규 기능
+
+원격 CLI, RateLimit 헤더, dryRun, _meta 래퍼, sparse fields, idempotency 6가지 기능을 추가했다.
+
+- 원격 MCP 경유 CLI: `--remote URL --key KEY` 전역 플래그로 로컬 서버 없이 원격 Memento 서버를 직접 조작한다. `MEMENTO_CLI_REMOTE` / `MEMENTO_CLI_KEY` 환경변수로도 지정 가능.
+- X-RateLimit 헤더: 모든 API 응답에 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Resource` 헤더를 포함한다. master key 또는 limit=null 설정 시 헤더를 생략한다. 10초 TTL 모듈 캐시로 DB 조회를 최소화한다.
+- dryRun 파라미터: remember / link / forget / amend 4개 MCP 도구에 `dryRun: true` 파라미터를 추가했다. 실제 DB 변경 없이 예상 결과만 반환하며 부작용을 완전히 건너뛴다. 기본값 false.
+
+CLI 사용 예시:
+
+```bash
+# 원격 서버에서 recall (환경변수 방식)
+MEMENTO_CLI_REMOTE=https://memento.anchormind.net/mcp MEMENTO_CLI_KEY=mmcp_xxx memento-mcp recall "query"
+
+# 원격 서버에서 recall (플래그 방식)
+memento-mcp recall "query" --remote https://memento.anchormind.net/mcp --key mmcp_xxx
+
+# 표 형식 출력, 결과 5건
+memento-mcp recall "query" --format table --limit 5
+
+# idempotency key로 중복 저장 방지
+memento-mcp remember "내용" --topic 프로젝트명 --idempotency-key k1
+```
+
+### v2.11.0 신규 기능
+
+H 그룹: _meta 래퍼, sparse fields, CLI 개선, idempotency.
+
+- _meta 래퍼: recall / context 응답에 `_meta: { searchEventId, hints, suggestion }` 필드를 추가했다. 기존 top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드는 v2.13.0 제거 예정이므로 `_meta.*` 경로를 사용할 것.
+- sparse fields: recall 호출 시 `fields` 배열로 반환 필드를 제한할 수 있다. 화이트리스트 17개: id / content / type / topic / keywords / importance / created_at / access_count / confidence / linked / explanations / workspace / context_summary / case_id / valid_to / affect / ema_activation.
+- CLI `--format`: `--format table|json|csv` 플래그로 출력 형식을 선택한다. TTY 환경에서는 기본 table, 파이프 환경에서는 자동으로 json. `--json`은 `--format json` 별칭.
+- CLI `--help`: 11개 서브명령 각각에 `--help` / `-h` 플래그 지원.
+- idempotencyKey: remember / batchRemember에 `idempotencyKey` 파라미터 추가. 같은 key_id 범위 내 중복 저장을 방지하며 최대 128자. migration-036으로 `fragments.idempotency_key` 컬럼 추가.
+
+_meta 래퍼 구조 예시:
+
+```json
+{
+  "fragments": [...],
+  "_meta": {
+    "searchEventId": "evt-abc123",
+    "hints": { "signal": "consider_context" },
+    "suggestion": { "code": "large_limit_no_budget", "message": "..." }
+  }
+}
+```
+
+Deprecation 공지: top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드는 v2.12.x 마지막 릴리즈를 끝으로 v2.13.0에서 제거된다. `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`으로 전환할 것.
+
+### v2.10.0 신규 기능
+
+Phase 5-B 내부 구조 분해. 사용자 API에는 변경 없다.
+
+- MemoryManager 축소: 1252줄 → 259줄 facade로 축소했다. 비즈니스 로직은 `lib/memory/processors/` 4개 클래스로 이동했다.
+  - MemoryRememberer: remember / batchRemember
+  - MemoryRecaller: recall / context
+  - MemoryReflector: reflect
+  - MemoryLinker: link / graph_explore
+- 공유 프로퍼티 동기화: facade ↔ 프로세서 간 setter를 `_installSharedSync` 패턴으로 동기화한다.
+
 ### v2.9.0 신규 기능
 
 - **Mode preset**: recall-only / write-only / onboarding / audit 4개 JSON preset. `X-Memento-Mode` 헤더 또는 `api_keys.default_mode` DB 컬럼으로 도구 노출 범위를 제한한다. 읽기 전용 에이전트, 감사 전용 세션 등 역할 기반 접근을 코드 변경 없이 구성할 수 있다.

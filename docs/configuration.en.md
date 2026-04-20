@@ -40,6 +40,14 @@
 | ENABLE_RECONSOLIDATION | false | Enable ReconsolidationEngine. When true, tool_feedback and contradicts detection dynamically update fragment_links weight/confidence |
 | ENABLE_SPREADING_ACTIVATION | false | Enable SpreadingActivation. When true, the contextText parameter in recall proactively activates related fragments. Recommended to measure latency impact before enabling |
 | ENABLE_PATTERN_ABSTRACTION | false | Enable pattern abstraction. Planned for activation after sufficient data accumulation (not yet implemented) |
+| MEMENTO_REMEMBER_ATOMIC | false | When true, atomizes the quota check + INSERT in remember() into a single transaction. Sequence: BEGIN → api_keys FOR UPDATE (quota re-validation) → INSERT → COMMIT, fully eliminating TOCTOU. The R12 hotfix in v2.10.1 resolved a TDZ bug; the atomic path now works correctly. false (default) performs only a pre-check and is appropriate for environments with low concurrent request volume |
+
+#### CLI Remote Access (v2.12.0 M1)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| MEMENTO_CLI_REMOTE | (none) | Remote MCP server URL used when the CLI `--remote` flag is not specified. Example: `https://memento.anchormind.net/mcp` |
+| MEMENTO_CLI_KEY | (none) | API key for remote server authentication, used when the CLI `--key` flag is not specified |
 
 #### Symbolic Memory (v2.8.0, opt-in)
 

@@ -2,9 +2,18 @@
 
 ## MemoryManager (Orchestration Layer)
 
-In v2.5.2, MemoryManager was reduced from 1,790 lines to 904 lines, and as of v2.6.0 it is at 1,051 lines with CBR/depth filter additions. It functions as the orchestration layer between tool handlers and sub-modules. Core logic for each operation is delegated to dedicated modules, while MemoryManager handles only dependency injection and method routing.
+In v2.5.2, MemoryManager was reduced from 1,790 lines to 904 lines. In v2.10.0 (Phase 5-B), it was finally decomposed into a 259-line thin facade. Business logic is delegated to 4 processors under `lib/memory/processors/`.
 
-**Decomposed modules:**
+**v2.10.0 decomposition result:**
+
+| Processor | Delegated operations | Lines |
+|-----------|---------------------|-------|
+| `MemoryRememberer` | `remember()`, `batchRemember()` | ~695 |
+| `MemoryRecaller` | `recall()`, `context()` | ~405 |
+| `MemoryReflector` | `reflect()` | ~89 |
+| `MemoryLinker` | `link()`, `forget()`, `amend()` | ~80 |
+
+**Legacy decomposed modules (independent of facade):**
 
 | Module | Delegated to | Role |
 |--------|-------------|------|
@@ -14,9 +23,55 @@ In v2.5.2, MemoryManager was reduced from 1,790 lines to 904 lines, and as of v2
 | `QuotaChecker` | `remember()` entry | Per-API-key fragment quota (fragment_limit) check |
 | `RememberPostProcessor` | After `remember()` completes | Embedding generation, morpheme indexing, auto-linking, assertion check, temporal linking, evaluation queue enqueue, ProactiveRecall pipeline. ProactiveRecall logic included -- creates automatic `related_to` links with fragments sharing keyword overlap (>=50%) on remember() |
 
+**Facade constructor flow:** Initializes 20 shared objects → injects into 4 processors via DI → calls `_installSharedSync()`. All 15 public methods are implemented as single-line delegations.
+
+**_installSharedSync:** Wraps each shared property setter on the facade (store, index, factory, etc.) with `Object.defineProperty`. A single assignment like `mm.store = stub` is automatically propagated to the facade and all processors (test DI compatibility).
+
 **Delegation pattern:** Each module receives required dependencies (store, index, factory, bound methods, etc.) through its constructor. MemoryManager binds self-referencing methods in its constructor (`this.recall.bind(this)`, `this.remember.bind(this)`) and passes them, so modules never back-reference MemoryManager.
 
 **reflect resolution_status auto-setting:** ReflectProcessor automatically assigns resolution_status to reflect-generated fragments. `errors_resolved` items receive `resolutionStatus: "resolved"`, and `open_questions` items receive `resolutionStatus: "open"`. All reflect-generated fragments also propagate `sessionId` for session-level tracking.
+
+**remember() pipeline structure (v2.11.0):**
+
+```
+remember(params)
+  ├── [NEW v2.11.0] dryRun branch — early return before atomic guard declaration
+  │     params.dryRun === true → computes validationResult without storing
+  │     returns { dryRun: true, wouldStore: true/false, reason, params }
+  ├── atomic guard — atomicRemember && keyId condition
+  ├── QuotaChecker.check() — conditional on !(atomicRemember && keyId)
+  ├── [NEW v2.11.0] idempotency branch — when params.idempotencyKey is present
+  │     FragmentReader.findByIdempotencyKey(key, keyId) lookup
+  │     if existing fragment found → early return { id, idempotent: true }
+  ├── FragmentWriter.insert() — actual fragment storage
+  │     idempotency_key column stores params.idempotencyKey (nullable)
+  └── RememberPostProcessor.run() — embedding/morpheme/link/eval post-processing
+```
+
+The `dryRun` branch is positioned before the atomic guard declaration (before `fragment` variable TDZ). The R12 hotfix (v2.10.1) moved the atomic branch to after the `fragment` declaration, resolving the TDZ. The v2.11.0 dryRun branch follows the same placement.
+
+**recall() pipeline — fields pick position:**
+
+```
+recall(query)
+  ├── L1 Redis in-memory cache (warm path)
+  ├── L2 pgvector embedding similarity
+  ├── L2.5 graph neighbors (fragment_links 1-hop)
+  ├── L3 PostgreSQL full-text search (morpheme)
+  ├── L4 Cross-Encoder Reranker (top 30 from RRF)
+  ├── RRF merge (k=60)
+  ├── token budget truncation (tokenBudget)
+  ├── valid_to filter
+  ├── Phase 2 explanations (ExplanationBuilder.annotate)
+  ├── Phase 5 CBR filter (cbrEligibility.filter, when sq.caseId present)
+  ├── trimmed.map(({ _rrfScore, ...rest }) => rest)  — strip internal scores
+  ├── [NEW v2.11.0] pickFields(query.fields)  — sparse fieldset
+  │     when query.fields is not specified, all fields returned (backward compat)
+  │     L1/L2/RRF cache stages retain full fields; pick is applied only at final return
+  └── SearchEventRecorder.record() — event recording
+```
+
+`pickFields` removes fields outside the 17-item whitelist (`id, content, type, importance, topic, ...`). It is not applied to cache stages (L1 warm hits, RRF intermediate objects) to preserve cache efficiency.
 
 ---
 

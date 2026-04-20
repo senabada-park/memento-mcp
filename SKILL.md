@@ -2,9 +2,117 @@
 
 AI 에이전트가 Memento MCP 기억 서버를 최대 효율로 활용하기 위한 기술 레퍼런스.
 
-## 현재 버전: v2.9.0
+## 현재 버전: v2.12.0
 
-v2.9.0은 v2.8.0 Symbolic Verification Layer 위에 **Mode Preset 시스템, Affective Tagging, RecallSuggestionEngine, Tool 메타 레지스트리**를 추가했다. 모든 신규 기능은 기본 비활성 또는 opt-in이므로 업그레이드 시 회귀는 없다. 하위의 `v2.8.0 Symbolic Memory` 및 `v2.7.0 Breaking Changes` 섹션은 해당 버전 이전에서 업그레이드하는 경우에도 여전히 유효하다.
+v2.12.0은 원격 CLI, X-RateLimit 헤더, dryRun 파라미터를 추가했다. v2.11.0은 _meta 래퍼, sparse fields, idempotencyKey를 도입했다. v2.10.0은 내부 구조를 processors 계층으로 분해했다. 모든 신규 기능은 기본 비활성 또는 opt-in이므로 업그레이드 시 회귀는 없다. 하위의 `v2.9.0`, `v2.8.0 Symbolic Memory`, `v2.7.0 Breaking Changes` 섹션은 해당 버전 이전에서 업그레이드하는 경우에도 여전히 유효하다.
+
+### Deprecation 공지 (v2.11.0 ~)
+
+recall / context 응답의 top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드는 v2.12.x 마지막 릴리즈를 끝으로 v2.13.0에서 제거된다. v2.11.0부터 동일 값이 `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`에도 동시 제공(mirror)된다. 지금 바로 `_meta.*` 경로로 전환할 것.
+
+---
+
+### v2.12.0 활용 가이드
+
+#### 원격 CLI
+
+로컬 Memento 서버 없이 원격 서버에 직접 연결한다.
+
+```bash
+# 환경변수 방식 (영구 설정에 적합)
+export MEMENTO_CLI_REMOTE=https://memento.anchormind.net/mcp
+export MEMENTO_CLI_KEY=mmcp_xxx
+memento-mcp recall "query"
+memento-mcp context
+
+# 플래그 방식 (일회성 호출)
+memento-mcp recall "query" --remote https://memento.anchormind.net/mcp --key mmcp_xxx
+```
+
+local-only 명령(migrate, admin 등)을 원격 모드에서 호출하면 에러가 반환된다.
+
+내부 동작: CLI가 MCP initialize → tools/call 2단계 세션을 생성하고 같은 세션을 재사용한다(`lib/cli/_mcpClient.js`).
+
+#### dryRun 파라미터
+
+remember / link / forget / amend 4개 도구에서 실제 저장 없이 예상 결과를 확인한다.
+
+```json
+{ "tool": "remember", "arguments": { "content": "테스트", "type": "fact", "dryRun": true } }
+```
+
+응답에 `"simulated": true` 필드가 포함되며 DB에 어떤 변경도 발생하지 않는다.
+
+#### X-RateLimit 헤더
+
+API 응답 헤더로 잔여 쿼터를 확인한다.
+
+```
+X-RateLimit-Limit: 5000
+X-RateLimit-Remaining: 4982
+X-RateLimit-Resource: fragments
+```
+
+master key 또는 limit=null 설정인 키는 헤더가 생략된다.
+
+---
+
+### v2.11.0 활용 가이드
+
+#### _meta 래퍼
+
+recall / context 응답에서 `_meta` 필드를 통해 검색 메타데이터를 읽는다.
+
+```javascript
+const res = await recall({ query: "nginx 설정" });
+const eventId = res._meta.searchEventId;   // tool_feedback에 사용
+const hint    = res._meta.hints;           // signal + trigger
+const suggest = res._meta.suggestion;      // recommendedTool + recommendedArgs
+```
+
+top-level `_searchEventId` / `_memento_hint` / `_suggestion`은 동일 값이 mirror 제공되지만 v2.13.0에서 제거된다. `_meta.*` 경로를 사용할 것.
+
+#### fields 파라미터 (sparse fieldsets)
+
+대역폭과 토큰 예산을 절약하기 위해 반환 필드를 제한한다.
+
+```json
+{
+  "query": "postgresql",
+  "fields": ["id", "content", "type", "importance"]
+}
+```
+
+화이트리스트 17개: id / content / type / topic / keywords / importance / created_at / access_count / confidence / linked / explanations / workspace / context_summary / case_id / valid_to / affect / ema_activation.
+
+#### idempotencyKey
+
+동일 내용의 중복 저장을 방지한다.
+
+```json
+{ "content": "PostgreSQL 15 사용", "type": "fact", "idempotencyKey": "proj-db-version-2026" }
+```
+
+같은 key_id 범위에서 동일 `idempotencyKey`로 다시 호출하면 기존 파편 id를 반환하고 저장을 건너뛴다.
+
+---
+
+### v2.10.0 내부 구조 변경 안내
+
+사용자 MCP API에는 변경이 없다. 내부 아키텍처만 변경됐다.
+
+MemoryManager가 1252줄에서 259줄 facade로 축소됐으며, 실제 로직은 `lib/memory/processors/` 4개 클래스로 분리됐다:
+
+- MemoryRememberer: remember / batchRemember
+- MemoryRecaller: recall / context
+- MemoryReflector: reflect
+- MemoryLinker: link / graph_explore
+
+테스트 코드에서 메서드 본문을 검증할 때는 `MemoryManager.prototype.remember.toString()` 대신 `MemoryRememberer.prototype.remember.toString()`을 사용한다.
+
+---
+
+### v2.9.0 신규 기능
 
 ### v2.9.0 신규 기능
 

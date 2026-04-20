@@ -15,6 +15,9 @@ const COMMANDS = {
   update:    () => import('../lib/cli/update.js'),
 };
 
+/** 원격 모드를 지원하지 않는 로컬 전용 명령 목록 */
+const LOCAL_ONLY_COMMANDS = new Set(["serve", "migrate", "cleanup", "backfill", "health", "update"]);
+
 function printUsage() {
   const lines = [
     'Usage: memento-mcp <command> [options]',
@@ -34,6 +37,12 @@ function printUsage() {
     'Options:',
     '  --help                      Show this help message',
     '  --json                      Output as JSON (where supported)',
+    '  --remote <URL>              MCP 원격 서버 URL (recall/remember/stats/inspect 전용)',
+    '  --key <KEY>                 API 키 Bearer 토큰 (--remote 사용 시 필수)',
+    '  --timeout <ms>              원격 요청 타임아웃 밀리초 (default: 30000)',
+    '',
+    'Remote-capable commands: recall, remember, stats, inspect',
+    'Local-only commands: serve, migrate, cleanup, backfill, health, update',
   ];
   console.log(lines.join('\n'));
 }
@@ -53,6 +62,14 @@ async function main() {
   }
 
   const args = parseArgs(rest);
+
+  /** --remote 지정 시 로컬 전용 명령은 즉시 거부 */
+  const remoteUrl = args.remote || process.env.MEMENTO_CLI_REMOTE;
+  if (remoteUrl && LOCAL_ONLY_COMMANDS.has(cmd)) {
+    console.error(`'${cmd}' 명령은 로컬 전용입니다. --remote 플래그를 사용할 수 없습니다.`);
+    console.error('원격 모드를 지원하는 명령: recall, remember, stats, inspect');
+    process.exit(1);
+  }
 
   // 서브명령별 --help / -h
   if (args.help || args.h) {

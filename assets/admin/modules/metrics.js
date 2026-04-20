@@ -3,16 +3,26 @@
  *
  * 작성자: 최진호
  * 작성일: 2026-04-20
+ * 수정일: 2026-04-20 (Phase 2: SVG sparkline + 시간 범위 토글)
  */
 
 import { api }                                from "./api.js";
 import { fmt, fmtMs, fmtPct, fmtDate, loadingHtml } from "./format.js";
+import { renderSparkline, filterByWindow }    from "./metrics-sparkline.js";
 
 /** @type {number|null} 현재 polling interval ID */
 let _pollInterval  = null;
 
 /** @type {AbortController|null} visibilitychange 중지 제어 */
 let _visHandler    = null;
+
+/**
+ * 시간 범위 토글 상태 (분 단위).
+ * 5 | 30 — 클라이언트 필터링으로 처리.
+ *
+ * @type {5|30}
+ */
+let _timeRangeMin = 5;
 
 /* ── API ─────────────────────────────────────────────────── */
 
@@ -31,14 +41,20 @@ export async function fetchMetricsSummary(opts = {}) {
 /**
  * 카드 정의 배열을 받아 2×4 grid DOM을 반환한다.
  *
- * @param {object} cards - 응답의 cards 객체
+ * sparklineKey: timeseries 응답 키. 설정된 카드에는 하단 sparkline 영역이 추가된다.
+ *   - activeSessions  → timeseries.activeSessions
+ *   - rpcLatencyP50   → timeseries.httpRps        (요청률과 latency P50은 연관도 높음)
+ *   - rpcLatencyP99   → timeseries.toolLatencyP95 (nearest match: tool call latency)
+ *
+ * @param {object} cards      - 응답의 cards 객체
+ * @param {object} timeseries - 응답의 timeseries 객체 (없으면 sparkline 생략)
  * @returns {HTMLElement}
  */
-function renderCardGrid(cards) {
+function renderCardGrid(cards, timeseries) {
   const CARD_DEFS = [
-    { key: "activeSessions",        label: "ACTIVE SESSIONS",       unit: "",      icon: "groups",               warn: (v) => false,       critical: (v) => false },
-    { key: "rpcLatencyP50",         label: "RPC LATENCY P50",       unit: "ms",    icon: "speed",                warn: (v) => v > 200,     critical: (v) => v > 500 },
-    { key: "rpcLatencyP99",         label: "RPC LATENCY P99",       unit: "ms",    icon: "timer",                warn: (v) => v > 500,     critical: (v) => v > 1000 },
+    { key: "activeSessions",        label: "ACTIVE SESSIONS",       unit: "",      icon: "groups",               warn: (v) => false,       critical: (v) => false,  sparklineKey: "activeSessions"  },
+    { key: "rpcLatencyP50",         label: "RPC LATENCY P50",       unit: "ms",    icon: "speed",                warn: (v) => v > 200,     critical: (v) => v > 500,  sparklineKey: "httpRps"         },
+    { key: "rpcLatencyP99",         label: "RPC LATENCY P99",       unit: "ms",    icon: "timer",                warn: (v) => v > 500,     critical: (v) => v > 1000, sparklineKey: "toolLatencyP95"  },
     { key: "toolErrorRate5m",       label: "TOOL ERROR RATE 5m",    unit: "%",     icon: "error_outline",        warn: (v) => v > 0.01,    critical: (v) => v > 0.05 },
     { key: "authDeniedRate5m",      label: "AUTH DENIED RATE 5m",   unit: "%",     icon: "lock",                 warn: (v) => v > 0.05,    critical: (v) => v > 0.2 },
     { key: "rbacDeniedRate5m",      label: "RBAC DENIED RATE 5m",   unit: "%",     icon: "admin_panel_settings", warn: (v) => v > 0.02,    critical: (v) => v > 0.1 },
@@ -87,6 +103,29 @@ function renderCardGrid(cards) {
     val.className = "metric-label text-2xl text-on-surface metrics-card__value";
     val.textContent = displayVal;
     card.appendChild(val);
+
+    /* sparkline 영역 — sparklineKey가 있고 timeseries 데이터가 존재하는 카드만 */
+    if (def.sparklineKey && timeseries) {
+      const raw  = timeseries[def.sparklineKey] ?? [];
+      const data = filterByWindow(raw, _timeRangeMin * 60 * 1000);
+
+      const sparkWrap = document.createElement("div");
+      sparkWrap.className = "metrics-card-sparkline";
+      sparkWrap.dataset.sparklineKey = def.sparklineKey;
+
+      renderSparkline(sparkWrap, data, {
+        width:  160,
+        height: 40,
+        stroke: stateClass === "metrics-card--critical" ? "#ffb4ab"
+              : stateClass === "metrics-card--warn"     ? "#f4b942"
+              : "#4a90e2",
+        fill:   stateClass === "metrics-card--critical" ? "rgba(255,180,171,0.12)"
+              : stateClass === "metrics-card--warn"     ? "rgba(244,185,66,0.12)"
+              : "rgba(74,144,226,0.15)"
+      });
+
+      card.appendChild(sparkWrap);
+    }
 
     grid.appendChild(card);
   });
@@ -319,6 +358,42 @@ export function renderMetricsView(container, viewState = {}) {
   syncLabel.textContent = generatedAt ? "UPDATED: " + fmtDate(generatedAt) : "--";
   headerRight.appendChild(syncLabel);
 
+  /* 시간 범위 토글 버튼 그룹 */
+  const rangeGroup = document.createElement("div");
+  rangeGroup.className = "metrics-time-range-group";
+  rangeGroup.id = "metrics-time-range-group";
+
+  [5, 30].forEach(min => {
+    const btn = document.createElement("button");
+    btn.className = "metrics-time-range-btn" + (_timeRangeMin === min ? " metrics-time-range-btn--active" : "");
+    btn.textContent = min === 5 ? "5m" : "30m";
+    btn.dataset.rangeMin = String(min);
+    btn.addEventListener("click", () => {
+      _timeRangeMin = min;
+      /* sparkline 영역만 재렌더링 — 카드 DOM을 전부 재생성하지 않음 */
+      const grid = container.querySelector(".metrics-card-grid");
+      if (grid) {
+        grid.querySelectorAll(".metrics-card-sparkline").forEach(wrap => {
+          const key  = wrap.dataset.sparklineKey;
+          const raw  = data?.timeseries?.[key] ?? [];
+          const pts  = filterByWindow(raw, _timeRangeMin * 60 * 1000);
+          renderSparkline(wrap, pts, { width: 160, height: 40 });
+        });
+      }
+      /* 버튼 active 상태 갱신 */
+      rangeGroup.querySelectorAll(".metrics-time-range-btn").forEach(b => {
+        if (Number(b.dataset.rangeMin) === _timeRangeMin) {
+          b.className = "metrics-time-range-btn metrics-time-range-btn--active";
+        } else {
+          b.className = "metrics-time-range-btn";
+        }
+      });
+    });
+    rangeGroup.appendChild(btn);
+  });
+
+  headerRight.appendChild(rangeGroup);
+
   const refreshBtn = document.createElement("button");
   refreshBtn.className = "btn px-3 py-1.5 text-[10px] font-bold flex items-center gap-1 border-primary/30 text-primary";
   refreshBtn.id = "metrics-refresh-btn";
@@ -349,8 +424,9 @@ export function renderMetricsView(container, viewState = {}) {
   }
 
   /* ── 카드 grid ── */
-  const cardsData = data?.cards ?? {};
-  container.appendChild(renderCardGrid(cardsData));
+  const cardsData      = data?.cards ?? {};
+  const timeseriesData = data?.timeseries ?? null;
+  container.appendChild(renderCardGrid(cardsData, timeseriesData));
 
   /* ── 테이블 영역 ── */
   const tables = document.createElement("div");

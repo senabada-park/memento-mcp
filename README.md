@@ -158,7 +158,7 @@ Claude.ai Web / ChatGPT 연동은 OAuth를 사용한다. 발급한 API 키(`mmcp
 | OAuth 연동 | RFC 7591 Dynamic Client Registration, Claude.ai / ChatGPT Web 통합 지원 |
 | **Workspace 격리** | 같은 키 내에서도 프로젝트·직종·클라이언트 단위로 기억을 분리. `api_keys.default_workspace`로 자동 태깅, 검색 시 자동 필터. |
 
-### v2.12.0 신규 기능
+### v3.0.0 신규 기능 — CLI/API Enhancement Phase 2 (v2.12.0 통합)
 
 원격 CLI, RateLimit 헤더, dryRun, _meta 래퍼, sparse fields, idempotency 6가지 기능을 추가했다.
 
@@ -182,15 +182,22 @@ memento-mcp recall "query" --format table --limit 5
 memento-mcp remember "내용" --topic 프로젝트명 --idempotency-key k1
 ```
 
-### v2.11.0 신규 기능
+### v3.0.0 신규 기능 — CLI/API Enhancement Phase 1 (v2.11.0 통합)
 
 H 그룹: _meta 래퍼, sparse fields, CLI 개선, idempotency.
 
-- _meta 래퍼: recall / context 응답에 `_meta: { searchEventId, hints, suggestion }` 필드를 추가했다. 기존 top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드는 v2.13.0 제거 예정이므로 `_meta.*` 경로를 사용할 것.
+- _meta 래퍼: recall / context 응답에 `_meta: { searchEventId, hints, suggestion }` 필드를 추가했다. 기존 top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드는 v3.1.0 제거 예정이므로 `_meta.*` 경로를 사용할 것.
 - sparse fields: recall 호출 시 `fields` 배열로 반환 필드를 제한할 수 있다. 화이트리스트 17개: id / content / type / topic / keywords / importance / created_at / access_count / confidence / linked / explanations / workspace / context_summary / case_id / valid_to / affect / ema_activation.
 - CLI `--format`: `--format table|json|csv` 플래그로 출력 형식을 선택한다. TTY 환경에서는 기본 table, 파이프 환경에서는 자동으로 json. `--json`은 `--format json` 별칭.
 - CLI `--help`: 11개 서브명령 각각에 `--help` / `-h` 플래그 지원.
 - idempotencyKey: remember / batchRemember에 `idempotencyKey` 파라미터 추가. 같은 key_id 범위 내 중복 저장을 방지하며 최대 128자. migration-034-v2.16.0-bundle으로 `fragments.idempotency_key` 컬럼 추가.
+
+### v3.0.0 신규 기능 — Admin Metrics Dashboard (v2.16.0 통합)
+
+- Admin Console 메트릭 메뉴: Prometheus 8 카드(Active Sessions / Auth Denied / RBAC Denied / Tenant Blocked / RPC p50/p99 / Tool Errors / Symbolic Gate Blocked / OAuth Tokens) + 도구별 호출 통계 테이블 + 에러 타입별 분포 테이블. 좌측 사이드바 메뉴 7개 → 8개.
+- `/v1/internal/model/nothing/metrics-summary` 엔드포인트(master/admin 전용): prom-client Registry 직접 산출, 응답 캐시 TTL 10초, `?windowSec=N` 파라미터 지원.
+- Phase 2: timeseries ring buffer + SVG sparkline. 외부 차트 라이브러리 의존 없이 브라우저 네이티브 ESM으로 렌더링.
+- test cleanup hang 근본 해결: node:test runner "Promise resolution pending" 14초 잔여 제거(SSE heartbeat `.unref()`, lifecycle 회귀 가드).
 
 _meta 래퍼 구조 예시:
 
@@ -205,9 +212,9 @@ _meta 래퍼 구조 예시:
 }
 ```
 
-Deprecation 공지: top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드는 v2.12.x 마지막 릴리즈를 끝으로 v2.13.0에서 제거된다. `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`으로 전환할 것.
+Deprecation 공지: top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드는 v3.0.0에서 `_meta.*`와 mirror 제공되며, v3.1.0에서 제거된다. 호출부는 `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`으로 전환할 것.
 
-### v2.10.0 신규 기능
+### v3.0.0 신규 기능 — MemoryManager 분해 (v2.10.0 통합)
 
 Phase 5-B 내부 구조 분해. 사용자 API에는 변경 없다.
 
@@ -218,7 +225,7 @@ Phase 5-B 내부 구조 분해. 사용자 API에는 변경 없다.
   - MemoryLinker: link / graph_explore
 - 공유 프로퍼티 동기화: facade ↔ 프로세서 간 setter를 `_installSharedSync` 패턴으로 동기화한다.
 
-### v2.9.0 신규 기능
+### v3.0.0 신규 기능 — Mode preset / Affect / Local Embedding (v2.9.0 통합)
 
 - **Mode preset**: recall-only / write-only / onboarding / audit 4개 JSON preset. `X-Memento-Mode` 헤더 또는 `api_keys.default_mode` DB 컬럼으로 도구 노출 범위를 제한한다. 읽기 전용 에이전트, 감사 전용 세션 등 역할 기반 접근을 코드 변경 없이 구성할 수 있다.
 - **RecallSuggestionEngine**: recall 응답에 `_suggestion` 메타 필드를 비침습적으로 첨부. 반복 질의, 빈 결과, 과도한 limit 등 4개 패턴을 자동 감지하여 개선 힌트를 제공한다. 클라이언트가 무시해도 기존 동작 불변.
@@ -298,7 +305,7 @@ Memento는 사실 기억(fact cache)에 최적화되어 있다. 전후관계가 
 | [Benchmark](docs/benchmark.md) | LongMemEval-S 벤치마크 상세 분석 |
 | [SKILL.md](SKILL.md) | MCP 도구 전체 레퍼런스 |
 | [INSTALL.md](docs/INSTALL.md) | 마이그레이션, 훅 설정, 상세 설치 |
-| [CHANGELOG](CHANGELOG.md) | 버전별 변경사항, v2.9.0 신규 기능 상세, v2.7.0 Migration Guide 포함 |
+| [CHANGELOG](CHANGELOG.md) | 버전별 변경사항, v3.0.0 umbrella 릴리즈 노트 및 Pre-3.0.0 incremental build 히스토리 포함 |
 
 ## 운영
 

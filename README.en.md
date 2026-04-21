@@ -158,7 +158,7 @@ See [integration guides](docs/getting-started/) for platform-specific setup.
 | OAuth Integration | RFC 7591 Dynamic Client Registration, Claude.ai Web and ChatGPT integration support |
 | **Workspace isolation** | Partition memories by project, role, or client within the same API key. Auto-tag via `api_keys.default_workspace`, auto-filter on recall. |
 
-### What's New in v2.12.0
+### What's New in v3.0.0 — CLI/API Enhancement Phase 2 (folded from v2.12.0)
 
 Remote CLI, X-RateLimit headers, dryRun, _meta wrapper, sparse fields, and idempotency.
 
@@ -182,15 +182,22 @@ memento-mcp recall "query" --format table --limit 5
 memento-mcp remember "content" --topic project --idempotency-key k1
 ```
 
-### What's New in v2.11.0
+### What's New in v3.0.0 — CLI/API Enhancement Phase 1 (folded from v2.11.0)
 
 H group: _meta wrapper, sparse fields, CLI improvements, and idempotency.
 
-- _meta wrapper: recall / context responses now include a `_meta: { searchEventId, hints, suggestion }` field. The existing top-level `_searchEventId` / `_memento_hint` / `_suggestion` fields are deprecated and will be removed in v2.13.0. Use `_meta.*` instead.
+- _meta wrapper: recall / context responses now include a `_meta: { searchEventId, hints, suggestion }` field. The existing top-level `_searchEventId` / `_memento_hint` / `_suggestion` fields are deprecated and will be removed in v3.1.0. Use `_meta.*` instead.
 - sparse fields: Pass a `fields` array to recall to restrict the returned fields. Whitelist of 17: id / content / type / topic / keywords / importance / created_at / access_count / confidence / linked / explanations / workspace / context_summary / case_id / valid_to / affect / ema_activation.
 - CLI `--format`: `--format table|json|csv` flag controls output format. Defaults to table in TTY environments and json when piped. `--json` is an alias for `--format json`.
 - CLI `--help`: All 11 subcommands support `--help` / `-h`.
 - idempotencyKey: remember / batchRemember accept an `idempotencyKey` parameter (max 128 chars) to prevent duplicate storage within the same key_id scope. migration-034-v2.16.0-bundle adds the `fragments.idempotency_key` column.
+
+### What's New in v3.0.0 — Admin Metrics Dashboard (folded from v2.16.0)
+
+- Admin Console metrics tab: 8 Prometheus cards (Active Sessions / Auth Denied / RBAC Denied / Tenant Blocked / RPC p50/p99 / Tool Errors / Symbolic Gate Blocked / OAuth Tokens) + per-tool call statistics table + error type distribution table. Left sidebar expands from 7 to 8 menus.
+- `/v1/internal/model/nothing/metrics-summary` endpoint (master/admin only): derived directly from the prom-client Registry, 10-second response cache TTL, `?windowSec=N` supported.
+- Phase 2: timeseries ring buffer + SVG sparkline rendered by browser-native ESM with no external chart library.
+- Test cleanup hang resolved at the root: removed the 14-second residual "Promise resolution pending" from node:test runner (SSE heartbeat `.unref()`, lifecycle regression guards).
 
 _meta structure example:
 
@@ -205,9 +212,9 @@ _meta structure example:
 }
 ```
 
-Deprecation notice: top-level `_searchEventId` / `_memento_hint` / `_suggestion` fields will be removed in v2.13.0 after the final v2.12.x release. Migrate to `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`.
+Deprecation notice: v3.0.0 mirrors the top-level `_searchEventId` / `_memento_hint` / `_suggestion` fields to `_meta.*`. The top-level fields will be removed in v3.1.0. Migrate to `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`.
 
-### What's New in v2.10.0
+### What's New in v3.0.0 — MemoryManager decomposition (folded from v2.10.0)
 
 Phase 5-B internal decomposition. No changes to the public API.
 
@@ -218,7 +225,7 @@ Phase 5-B internal decomposition. No changes to the public API.
   - MemoryLinker: link / graph_explore
 - Shared property synchronization: facade and processors sync shared setters via the `_installSharedSync` pattern.
 
-### What's New in v2.9.0
+### What's New in v3.0.0 — Mode preset / Affect / Local Embedding (folded from v2.9.0)
 
 - **Mode presets**: Four JSON presets — recall-only, write-only, onboarding, audit. Activate via `X-Memento-Mode` header or `api_keys.default_mode` DB column to constrain which tools are exposed per session. Enables role-based access control without any code changes.
 - **RecallSuggestionEngine**: Non-invasive `_suggestion` meta field appended to recall responses. Detects four patterns — repeat queries, empty results with no context, oversized limit with no budget, and noisy untyped queries — and surfaces improvement hints. Clients that ignore the field see no behavior change.
@@ -298,7 +305,7 @@ Memento is optimized for fact caching. When narrative context matters:
 | [Benchmark](docs/benchmark.en.md) | Full LongMemEval-S benchmark analysis |
 | [SKILL.md](SKILL.md) | Full MCP tool reference |
 | [INSTALL.md](docs/INSTALL.en.md) | Migrations, hook setup, detailed installation |
-| [CHANGELOG](CHANGELOG.md) | Version history, v2.9.0 highlights, v2.7.0 Migration Guide included |
+| [CHANGELOG](CHANGELOG.md) | Version history, v3.0.0 umbrella release notes, and Pre-3.0.0 incremental build ledger |
 
 ## Operations
 

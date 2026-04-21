@@ -1,15 +1,59 @@
 # Changelog
 
-## [Unreleased] v2.16.0
+## [3.0.0] - 2026-04-21
 
-### Added
+v2.8.0 태그 이후 누적된 un-tagged 빌드 11종(v2.8.1 ~ v2.16.0)을 umbrella 릴리즈로 통합한다. 개별 minor/patch 라벨은 CHANGELOG 하단 "Pre-3.0.0 incremental builds" 섹션에 상세 보존된다.
+
+### Highlights
+
+- **Admin Metrics Dashboard** (v2.16.0): Prometheus 8 카드(Active Sessions / Auth Denied / RBAC Denied / Tenant Blocked / RPC p50/p99 / Tool Errors / Symbolic Gate Blocked / OAuth Tokens) + 도구별 호출/에러 분포 테이블 + SVG sparkline 시계열. `/v1/internal/model/nothing/metrics-summary` 엔드포인트(master/admin 전용, TTL 10초 캐시, `?windowSec=N`)
+- **CLI/API Enhancement L+M+H** (v2.11.0 ~ v2.12.0): 원격 CLI(`lib/cli/_mcpClient.js`, `--remote URL` / `--key KEY`), `_meta` 래퍼(`searchEventId` / `hints` / `suggestion`), sparse fields 17종 화이트리스트, `--help`/`--format table|json|csv`, idempotencyKey(maxLength 128, partial UNIQUE), X-RateLimit 헤더, dryRun 파라미터(remember/link/forget/amend), stdin / progress streaming / export·import, CLI session 관리 및 rotate / rate-limit / CSRF
+- **MemoryManager 분해** (v2.10.0): 1252줄 → 259줄 facade. 비즈니스 로직을 `lib/memory/processors/` 4개 클래스로 분리(MemoryRememberer / MemoryRecaller / MemoryReflector / MemoryLinker). facade ↔ 프로세서 간 `_installSharedSync` setter 동기화 패턴
+- **Mode preset / Affective tagging / Local Embedding** (v2.9.0): recall-only / write-only / onboarding / audit 4개 JSON preset(`X-Memento-Mode` 헤더 / `initialize.params.mode` / `api_keys.default_mode`). fragments.affect 컬럼(6 enum: neutral / frustration / confidence / surprise / doubt / satisfaction). `@huggingface/transformers` 로컬 임베딩 provider(`EMBEDDING_PROVIDER=transformers`, Xenova/multilingual-e5-small / bge-m3). Codex CLI / GitHub Copilot CLI LLM provider 추가. RecallSuggestionEngine 비침습적 힌트 필드. 토큰 기반 세션 재사용(sha256 + keyId 네임스페이스)
+- **Session 안정화 + OAuth 호환성** (v2.8.1 ~ v2.8.7): claude.ai / ChatGPT / Copilot / Gemini OAuth DCR-less 커넥터 완전 호환. name-based DCR client_id(`<name>_<keyIdHex8>`) + `client_name="apikey:<keyId>"` 내부 바인딩, `client_secret` API 키 바인딩, bound_key_id 경로. 세션 ID 보존 복구 + keyId 교차 검증(403). RFC 8707 `resource` 파라미터. `token_endpoint_auth_methods_supported` 확장. MCP 2025-06-18 Protocol-Version 헤더 검증. `MCP_REJECT_NONAPIKEY_OAUTH` / `MCP_ALLOW_AUTO_DCR_REGISTER` / `MCP_STRICT_ORIGIN` 보안 기본값. FragmentReader keyId ANY() 래핑 일괄 수정(v2.8.7)
+- **Symbolic Memory Layer hard gate** (v2.8.0): 이미 v2.8.0에서 도입(본 릴리즈는 hard gate 이후 후속 수정 및 문서 동기화 포함). `fragment_claims` + `api_keys.symbolic_hard_gate` BOOLEAN. 6 Phase(Foundation / Shadow / Explain / Link Integrity / Policy / CBR+Proactive) 전개. 기본값 전면 opt-out
+- **Scripts rename** (un-tagged 2026-04-19): `scripts/migration-007-flexible-embedding-dims.js` → `scripts/post-migrate-flexible-embedding-dims.js`. 자동 마이그레이션 러너와 수동 dimension 재구성 스크립트 구분. 심볼릭 링크로 하위 호환
+- **Test cleanup hang 근본 해결** (v2.16.1 scope): node:test runner "Promise resolution pending" 14초 잔여 제거. SSE heartbeat `.unref()`, cleanup 훅, lifecycle 회귀 가드
+
+### Breaking Changes
+
+코드 레벨 breaking 없음. 모든 신규 기능 opt-in. 기존 환경 변수·API 응답·DB 스키마 완전 호환.
+
+Deprecation 예고(v3.1.0에서 제거): recall / context 응답의 top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드. v3.0.0은 `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`과 top-level mirror를 동시 제공. 호출부는 `_meta.*`로 전환 권고.
+
+### Migration Guide (v2.8.0 → v3.0.0)
+
+1. `npm install` — `@huggingface/transformers` 신규 의존성(로컬 임베딩 사용 시에만 실제 로드). 기존 lock 갱신
+2. `npm run migrate` — migration-034(api_keys.default_mode ADD COLUMN) + migration-034-v2.16.0-bundle(fragments.affect / idempotency_key ADD COLUMN + partial unique 인덱스) 자동 적용. 모두 ADD COLUMN이므로 기존 행 변경 없음
+3. 환경 변수 확인 — 기본값 유지 시 추가 작업 없음. 선택적 기능 활성화:
+   - `EMBEDDING_PROVIDER=transformers` (로컬 임베딩)
+   - `LLM_PRIMARY` / `LLM_FALLBACKS` (LLM 폴백 체인)
+   - `MEMENTO_SYMBOLIC_*` (Symbolic 계층 단계적 활성화 — v2.8.0 Migration Guide 참조)
+   - `MCP_REJECT_NONAPIKEY_OAUTH=false` (claude.ai 외 DCR-less 클라이언트에 대한 하위 호환 복원이 필요한 경우만)
+4. EMBEDDING_PROVIDER 변경 시에만 `npm run backfill:embeddings` 수동 실행. 차원 불일치 시 서버 기동 단계에서 `scripts/check-embedding-consistency.js`가 즉시 중단
+5. 기존 스크립트 경로 `scripts/migration-007-flexible-embedding-dims.js` 참조 시 `scripts/post-migrate-flexible-embedding-dims.js`로 전환 권고(심볼릭 링크는 v2.13.0 네임스페이스 하위 호환 유지)
+
+### Known Limitations
+
+- v2.8.0 이후 v2.9.0 ~ v2.16.0의 중간 빌드는 git tag가 존재하지 않는다. v3.0.0이 유일한 공식 릴리즈 태그이며, 하위 빌드 히스토리는 본 CHANGELOG로만 추적된다
+- `MEMENTO_ACCESS_KEY` 미설정 상태에서 `MEMENTO_AUTH_DISABLED=true` 없이 서버를 기동하면 fail-closed로 거부된다(v2.7.0 정책 유지)
+
+---
+
+## Pre-3.0.0 incremental builds (un-tagged)
+
+아래는 v2.8.0 태그 이후 누적된 11개 빌드의 원본 상세 이력이다. 모두 v3.0.0 릴리즈에 포함되며, 개별 git tag는 존재하지 않는다.
+
+### v2.16.0 draft — Admin Metrics Dashboard (2026-04-20)
+
+#### Added
 
 - Admin Console: 메트릭 메뉴 추가 — Prometheus 8 카드(Active Sessions / Auth Denied / RBAC Denied / Tenant Blocked / RPC p50/p99 / Tool Errors / Symbolic Gate Blocked / OAuth Tokens) + 도구별 호출 통계 테이블 + 에러 타입별 분포 테이블. Admin UI 좌측 사이드바 메뉴 7개 → 8개.
 - `/v1/internal/model/nothing/metrics-summary` 엔드포인트 (master/admin 전용): prom-client Registry에서 직접 산출, 응답 캐시 TTL 10초, `?windowSec=N` 파라미터 지원.
 
 ---
 
-## [2.12.0] - 2026-04-20
+### v2.12.0 — CLI/API Enhancement Phase 2 (2026-04-20)
 
 ### Added
 
@@ -17,7 +61,7 @@
 - M3 X-RateLimit HTTP 헤더: 모든 API 응답에 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Resource` 헤더 포함. `QuotaChecker.getUsage` + 모듈 레벨 Map 캐시(TTL 10초, 상한 1000 엔트리). master key 또는 limit=null이면 헤더 생략.
 - M5 dryRun 파라미터: remember / link / forget / amend 4개 MCP 도구에 `dryRun: boolean` 파라미터 추가. 기본값 false. true 시 `simulated: true` 응답 반환 + 모든 side-effect 스킵.
 
-## [2.11.0] - 2026-04-20
+### v2.11.0 — CLI/API Enhancement Phase 1 (2026-04-20)
 
 ### Added
 
@@ -31,7 +75,7 @@
 
 - recall / context 응답의 top-level `_searchEventId` / `_memento_hint` / `_suggestion` 필드: v2.12.x 마지막 릴리즈를 끝으로 v2.13.0에서 제거된다. `_meta.searchEventId` / `_meta.hints` / `_meta.suggestion`으로 전환할 것.
 
-## [2.10.1] - 2026-04-20
+### v2.10.1 — TDZ 핫픽스 (2026-04-20)
 
 ### Fixed
 
@@ -41,7 +85,7 @@
 
 - 회귀 방지 단위 테스트 `tests/unit/memory-manager-remember-tdz.test.js`: atomic 분기의 TDZ 경로를 직접 재현하는 테스트 추가.
 
-## [2.10.0] - 2026-04-20
+### v2.10.0 — MemoryManager 분해 (2026-04-20)
 
 ### Changed
 
@@ -53,19 +97,19 @@
 - `tests/unit/memory-manager-di.test.js`: DI 경로를 `MemoryManager.prototype.remember.toString()` → `MemoryRememberer.prototype.remember.toString()`으로 전환.
 - `tests/unit/remember-processor.test.js`: MemoryRememberer 직접 DI 경로로 전환.
 
-## [Unreleased] - 2026-04-19
+### Pre-2.10.0 — Scripts rename (2026-04-19)
 
-### Changed
+#### Changed
 
 - scripts/migration-007-flexible-embedding-dims.js 를 scripts/post-migrate-flexible-embedding-dims.js 로 이름 변경. 자동 마이그레이션 러너(lib/memory/migration-NNN-*.sql)와 수동 dimension 재구성 스크립트를 파일명으로 명확히 구분하기 위함.
 - setup.sh, .env.example 내 구 경로 참조를 신 경로로 일괄 치환.
 
-### Breaking Notice
+#### Deprecation Notice
 
 - scripts/migration-007-flexible-embedding-dims.js 는 신 경로(post-migrate-flexible-embedding-dims.js)를 가리키는 심볼릭 링크로 v2.13.0까지 유지된다.
 - 외부 스크립트나 CI에서 구 경로를 직접 참조하는 경우 scripts/post-migrate-flexible-embedding-dims.js 로 전환할 것을 권고한다.
 
-## [2.9.0] - 2026-04-18
+### v2.9.0 — Mode preset / Affect / Local Embedding / LLM CLI Providers (2026-04-18)
 
 ### Added
 
@@ -106,13 +150,13 @@
 
 없음. 모든 신규 기능은 opt-in이다. Mode preset / affect / 로컬 임베딩은 기본값을 유지하면 기존 동작이 완전히 보존된다. migration-034(api_keys.default_mode), migration-034-v2.16.0-bundle(fragments.affect)는 ADD COLUMN이므로 기존 데이터에 영향 없다.
 
-## [2.8.7] - 2026-04-17
+### v2.8.7 — FragmentReader keyId ANY() 일괄 fix (2026-04-17)
 
 ### Fixed
 
 - **`FragmentReader.getByIds` PostgreSQL "malformed array literal" 에러**: `key_id = ANY($3)` SQL에 단일 UUID 문자열을 그대로 바인딩하여 PG가 배열 파싱 시 실패했다. 호출 측이 `keyId`를 문자열로 전달하는 경우 배열로 래핑(`[keyId]`)하도록 수정. 영향 경로: `FragmentSearch.fetch`(missing IDs 조회), `RememberPostProcessor.linkedTo 소유권 확인`, `SessionLinker.autoLinkSessionFragments` — 간헐적 recall/remember/link 실패 원인이었다. (`lib/memory/FragmentReader.js`)
 
-## [2.8.6] - 2026-04-17
+### v2.8.6 — OAuth auto-register on trusted redirect_uri (2026-04-17)
 
 ### Changed
 
@@ -124,7 +168,7 @@
 - claude.ai 외 ChatGPT/Copilot/Gemini 등 OAuth DCR-less 클라이언트도 사전 수동 등록 없이 즉시 연결 가능. 사용자가 client_id에 임의 문자열 + client_secret에 API 키를 입력하기만 하면 됨.
 - 비신뢰 redirect_uri는 기존과 동일하게 `ALLOW_AUTO_DCR_REGISTER=false` 기본값에서 차단 (보안 유지).
 
-## [2.8.5] - 2026-04-17
+### v2.8.5 — claude.ai OAuth MCP 2025-06-18 compliance (2026-04-17)
 
 ### Fixed
 
@@ -141,7 +185,7 @@
 - **`bearer_methods_supported`에서 `query` 제거**: `["header", "query"]` → `["header"]`. MCP 스펙(2025-06-18 §249) "MUST NOT in URI query string" 준수. (`lib/oauth.js#getResourceMetadata`)
 - **Protected Resource Metadata의 `resource` URI에 `/mcp` 경로 포함**: `${baseUrl}` → `${baseUrl}/mcp`. claude.ai가 `resource` 필드를 MCP 엔드포인트로 사용하여 이전에는 `/`(root)로 POST하다 404를 받던 문제 해결. (`lib/oauth.js#getResourceMetadata`)
 
-## [2.8.4] - 2026-04-17
+### v2.8.4 — name-based DCR client_id + internal keyId binding (2026-04-17)
 
 ### Changed
 
@@ -165,7 +209,7 @@
 - v2.8.3에서 전체 API 키 문자열을 `client_id`로 등록한 기존 Redis 토큰은 `bound_key_id=null`로 2순위 `is_api_key` 경로를 통해 정상 동작. backward compat 완전 보장.
 - DB 스키마 변경 없음. migration 추가 불필요.
 
-## [2.8.3] - 2026-04-17
+### v2.8.3 — DCR /register API key binding (2026-04-17)
 
 ### Fixed
 
@@ -176,7 +220,7 @@
 - 별도 DB 스키마 변경 없음. 기존 `mmcp_*` 접두 client_id 플로우를 재활용한다.
 - Authorization 헤더 없거나 유효하지 않은 토큰이면 기존 랜덤 client_id로 등록하되, 그 클라이언트가 발급받은 토큰은 auth.js의 `REJECT_NONAPIKEY_OAUTH=true` 정책에 의해 여전히 거부된다.
 
-## [2.8.2] - 2026-04-17
+### v2.8.2 — MCP spec compliance + OAuth hardening (2026-04-17)
 
 ### Security
 
@@ -194,7 +238,7 @@
 - **New env**: `MCP_STRICT_ORIGIN` (기본 `false`).
 - **New metrics**: `mcp_session_404_total`, `mcp_origin_rejected_total` (label: `origin`), `mcp_protocol_version_rejected_total` (label: `version`), `mcp_oauth_nonapikey_rejected_total`, `mcp_oauth_auto_register_blocked_total`.
 
-## [2.8.1] - 2026-04-17
+### v2.8.1 — Session integrity + recovery (2026-04-17)
 
 ### Added
 
@@ -209,6 +253,8 @@
 ### Fixed
 
 - **Heartbeat 연속 실패 경로 autoReflect 누락**: `lib/sessions.js`의 heartbeat interval에서 `hbFailures >= SSE_MAX_HEARTBEAT_FAILURES` 시 `session.close()` 직접 호출 대신 `closeStreamableSession(sessionId)`를 경유하도록 수정. 세션 종료 시 autoReflect가 반드시 실행됨.
+
+---
 
 ## [2.8.0] - 2026-04-16
 

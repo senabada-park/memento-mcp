@@ -128,6 +128,43 @@ Via `initialize` parameters:
 
 Token-based session reuse is enabled. Even when a client reconnects without an `Mcp-Session-Id`, the server automatically recovers the existing session if the same Bearer token is presented. This is transparent to the client and requires no additional configuration.
 
+### POST /session/rotate (v2.15.0)
+
+Reissues only the session identifier while preserving all in-flight state, intended for suspected session-ID compromise. Redis-stored session data is retained as-is; only the ID is swapped, so memory fragments and the MCP connection state are unaffected.
+
+Request:
+
+```http
+POST /session/rotate HTTP/1.1
+Authorization: Bearer <API key or master key>
+Mcp-Session-Id: <target sessionId>
+Origin: https://example.nerdvana.kr
+Content-Type: application/json
+
+{ "reason": "suspected_leak" }
+```
+
+Response (200):
+
+```json
+{
+  "ok": true,
+  "oldSessionId": "aabbcc11-...-8899ddee",
+  "newSessionId": "ffeedd22-...-3344ccbb",
+  "reason": "suspected_leak",
+  "rotatedAt": "2026-04-21T12:34:56.789Z"
+}
+```
+
+Policy:
+
+- Auth: `Authorization: Bearer` required; ownership mismatch with the target session returns 403
+- CSRF guard: `Origin` header required; missing or non-allowlisted Origin returns 403
+- Rate limit: `MEMENTO_ROTATE_RATE_LIMIT_PER_MIN` requests per IP per minute (default 5); exceeding returns 429
+- `reason` is an audit-log field (max 128 chars); defaults to `explicit_rotate` when omitted
+- Metrics: `mcp_session_rotation_total{reason}` counter + `mcp_rotate_rate_limited_total` counter
+- CLI: use `memento-mcp session rotate <sessionId>` for the same capability; see `docs/cli.en.md` for details
+
 ### tools/list Response — meta Field (v2.9.0)
 
 Each tool entry in the `tools/list` response now includes a `meta` field.

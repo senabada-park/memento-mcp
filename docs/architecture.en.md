@@ -1063,12 +1063,17 @@ LLM_PRIMARY=gemini-cli
 - Calls GitHub Copilot CLI (`gh copilot suggest`) as a wrapper
 - Uses `extractJsonBlock()` utility to strip trailing statistics/banner text before JSON extraction
 
+**qwen-cli provider** (`lib/llm/providers/QwenCliProvider.js`):
+- Wraps Alibaba Cloud Qwen Code CLI (`qwen`) in `--output-format text` mode
+- Extracts JSON block from text output. When `model` is omitted, the CLI default model is used
+- Requires `qwen auth` authentication
+
 **Circuit breaker and timeout** (`config/memory.js`):
 - `geminiTimeoutMs: 60000` (increased from 15000). Accommodates latency growth with large Gemini CLI prompts
 - Circuit breaker failure threshold (LLM_CB_FAILURE_THRESHOLD=5) and OPEN duration (LLM_CB_OPEN_DURATION_MS=60000) remain unchanged
 
 **Complete LLM_PRIMARY allowed values** (v2.9.0):
-`gemini-cli`, `anthropic`, `openai`, `google-gemini-api`, `groq`, `openrouter`, `xai`, `ollama`, `vllm`, `deepseek`, `mistral`, `cohere`, `zai`, `codex-cli`, `copilot-cli`
+`gemini-cli`, `anthropic`, `openai`, `google-gemini-api`, `groq`, `openrouter`, `xai`, `ollama`, `vllm`, `deepseek`, `mistral`, `cohere`, `zai`, `codex-cli`, `copilot-cli`, `qwen-cli`
 
 ### Search Pipeline -- _suggestion Post-Processing
 

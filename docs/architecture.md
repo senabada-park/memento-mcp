@@ -1066,12 +1066,17 @@ LLM_PRIMARY=gemini-cli
 - GitHub Copilot CLI(`gh copilot suggest`)를 래퍼로 호출
 - `extractJsonBlock()` 유틸리티로 응답 말미의 통계/배너 텍스트 제거 후 JSON 추출
 
+**qwen-cli provider** (`lib/llm/providers/QwenCliProvider.js`):
+- Alibaba Cloud Qwen Code CLI(`qwen`)를 래퍼로 호출
+- `--output-format text` 모드로 실행 후 JSON 블록 추출
+- `model` 미지정 시 CLI 기본 모델 사용. `qwen auth` 인증 필요
+
 **circuit breaker 및 timeout** (`config/memory.js`):
 - `geminiTimeoutMs: 60000` (이전 15000에서 상향). Gemini CLI 대형 프롬프트의 지연 증가 대응
 - circuit breaker 실패 임계(LLM_CB_FAILURE_THRESHOLD=5), OPEN 지속(LLM_CB_OPEN_DURATION_MS=60000)은 기존과 동일
 
 **LLM_PRIMARY 허용값 전체 목록** (v2.9.0):
-`gemini-cli`, `anthropic`, `openai`, `google-gemini-api`, `groq`, `openrouter`, `xai`, `ollama`, `vllm`, `deepseek`, `mistral`, `cohere`, `zai`, `codex-cli`, `copilot-cli`
+`gemini-cli`, `anthropic`, `openai`, `google-gemini-api`, `groq`, `openrouter`, `xai`, `ollama`, `vllm`, `deepseek`, `mistral`, `cohere`, `zai`, `codex-cli`, `copilot-cli`, `qwen-cli`
 
 ### 검색 파이프라인 — _suggestion 후처리
 

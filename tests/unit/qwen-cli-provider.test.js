@@ -95,6 +95,15 @@ describe("QwenCliProvider", () => {
     assert.deepEqual(result, { ok: true });
   });
 
+  it("callJson: JSON 문자열 내부의 triple backticks를 보존한다", async () => {
+    mockRunQwenCLI.mock.mockImplementationOnce(async () => "```json\n{\"snippet\":\"```ts\\nconst ok = true;\\n```\"}\n```");
+
+    const provider = new QwenCliProvider();
+    const result = await provider.callJson("user payload");
+
+    assert.deepEqual(result, { snippet: "```ts\nconst ok = true;\n```" });
+  });
+
   it("callJson: circuit breaker open 상태면 helper 호출 없이 에러를 던진다", async () => {
     const provider = new QwenCliProvider();
     provider.isCircuitOpen = async () => true;
